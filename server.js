@@ -193,6 +193,30 @@ app.get('/api/users/search', authenticateUser, async (req, res) => {
   }
 });
 
+// User Profile Lookup API (needed because /api/following & /api/followers
+// only return UIDs — the frontend chat list needs name/username/photo too)
+app.get('/api/users/:uid', authenticateUser, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const userSnap = await usersCollection.doc(uid).get();
+
+    if (!userSnap.exists) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    const data = userSnap.data();
+    res.status(200).json({
+      success: true,
+      user: {
+        uid,
+        name: data.name || null,
+        username: data.username || null,
+        photo_url: data.photo_url || null,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Get user error.' });
+  }
+});
+
 // 6. Follow / Follow-Back System Engine
 app.post('/api/follow', authenticateUser, async (req, res) => {
   try {
