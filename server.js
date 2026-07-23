@@ -1,11 +1,13 @@
 /**
- * StudyBuddyZone Backend - Step 4 (Firestore + Search + Follow + Gallery Engine)
+ * StudyBuddyZone Backend - Step 5 (Final Engine: Firestore + Search + Follow + Gallery + Socket.io Chat)
  */
 
 require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 const admin = require('firebase-admin');
 
 // 1. Firebase Admin SDK Initialization
@@ -31,9 +33,18 @@ try {
 const db = admin.firestore();
 const usersCollection = db.collection('users');
 const followsCollection = db.collection('follows');
+const messagesCollection = db.collection('messages');
 
-// 2. Express App Setup
+// 2. Express & HTTP Server Setup (for Socket.io)
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.use(cors({ origin: '*' }));
@@ -124,7 +135,7 @@ app.post('/api/users/sync', authenticateUser, async (req, res) => {
       email: resolvedEmail,
       username: username || null,
       photo_url: photoURL || null,
-      gallery_photos: [], // 8-10 तस्वीरें स्टोर करने के लिए ऐरे
+      gallery_photos: [],
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
     };
@@ -238,65 +249,111 @@ app.get('/api/following/:uid', authenticateUser, async (req, res) => {
   }
 });
 
-// 7. Limited Photo Gallery Engine (Max 10 Photos)
+// 7. Limited Photo Gallery Engine
 app.post('/api/gallery/add', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.user;
     const { imageUrl } = req.body;
 
-    if (!imageUrl) {
-      return res.status(400).json({ success: false, message: 'Image URL आवश्यक है।' });
-    }
+    if (!imageUrl) return res.status(400).json({ success: false, message: 'Image URL required.' });
 
     const userRef = usersCollection.doc(uid);
     const userSnap = await userRef.get();
 
-    if (!userSnap.exists) {
-      return res.status(404).json({ success: false, message: 'User नहीं मिला।' });
-    }
+    if (!userSnap.exists) return res.status(404).json({ success: false, message: 'User not found.' });
 
     const currentPhotos = userSnap.data().gallery_photos || [];
 
-    // लिमिट चेक: अधिकतम 10 तस्वीरें
     if (currentPhotos.length >= 10) {
-      return res.status(400).json({
-        success: false,
-        message: 'सीमा समाप्त: आप अधिकतम 10 फ़ोटो ही अपलोड कर सकते हैं।'
-      });
+      return res.status(400).json({ success: false, message: 'Limit reached: Maximum 10 photos allowed.' });
     }
 
     await userRef.update({
       gallery_photos: admin.firestore.FieldValue.arrayUnion(imageUrl)
     });
 
-    res.status(200).json({
-      success: true,
-      message: 'फ़ोटो गैलरी में सफलतापूर्वक जुड़ गई!',
-      photosCount: currentPhotos.length + 1
-    });
+    res.status(200).json({ success: true, message: 'Photo added to gallery!' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Gallery error.' });
   }
 });
 
-// फ़ोटो हटाने के लिए
-app.post('/api/gallery/remove', authenticateUser, async (req, res) => {
+// Chat Messages History API (पुरानी चैट लोड करने के लिए)
+app.get('/api/messages/:otherUserId', authenticateUser, async (req, res) => {
   try {
-    const { uid } = req.user;
-    const { imageUrl } = req.body;
+    const currentUserId = req.user.uid;
+    const { otherUserId } = req.params;
 
-    const userRef = usersCollection.doc(uid);
-    await userRef.update({
-      gallery_photos: admin.firestore.FieldValue.arrayRemove(imageUrl)
-    });
+    const chatRoomId = [currentUserId, otherUserId].sort().join('_');
 
-    res.status(200).json({ success: true, message: 'फ़ोटो गैलरी से हटा दी गई!' });
+    const snap = await messagesCollection
+      .where('room_id', '==', chatRoomId)
+      .orderBy('timestamp', 'asc')
+      .limit(50)
+      .get();
+
+    const messages = snap.docs.map(doc => doc.data());
+
+    res.status(200).json({ success: true, count: messages.length, messages });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Delete photo error.' });
+    res.status(500).json({ success: false, message: 'Chat history error.' });
   }
 });
 
-// 8. Start Server
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+// 8. Socket.io Real-time Chat Engine
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) return next(new Error('Authentication error'));
+
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    socket.user = decodedToken;
+    next();
+  } catch (err) {
+    next(new Error('Authentication error'));
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log(`⚡ User connected to Live Chat: ${socket.user.uid}`);
+
+  // यूजर को उसके पर्सनल रूम में जॉइन कराएं
+  socket.join(socket.user.uid);
+
+  // लाइव मैसेज रिसीव और सेंड करने का लॉजिक
+  socket.on('send_message', async (data) => {
+    const { receiverId, text } = data;
+    const senderId = socket.user.uid;
+
+    if (!receiverId || !text) return;
+
+    const chatRoomId = [senderId, receiverId].sort().join('_');
+
+    const messageData = {
+      room_id: chatRoomId,
+      sender_id: senderId,
+      receiver_id: receiverId,
+      text: text,
+      timestamp: new Date().toISOString()
+    };
+
+    // Receiver की स्क्रीन पर मैसेज तुरंत भेजें
+    io.to(receiverId).emit('receive_message', messageData);
+
+    // चैट हिस्ट्री के लिए DB में सेव करें
+    try {
+      await messagesCollection.add(messageData);
+    } catch (err) {
+      console.error('Error saving chat message:', err);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 User disconnected: ${socket.user.uid}`);
+  });
+});
+
+// 9. Start Server
+server.listen(PORT, () => {
+  console.log(`✅ Server running with Socket.io Chat Engine on port ${PORT}`);
 });
