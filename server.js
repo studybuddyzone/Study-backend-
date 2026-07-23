@@ -1,5 +1,5 @@
 /**
- * StudyBuddyZone Backend - Step 5 (Final Engine: Firestore + Search + Follow + Gallery + Socket.io Chat)
+ * StudyBuddyZone Backend - Final Updated Engine (Firestore + Search + Follow + Gallery + Socket.io Chat)
  */
 
 require('dotenv').config();
@@ -10,17 +10,18 @@ const http = require('http');
 const { Server } = require('socket.io');
 const admin = require('firebase-admin');
 
-// 1. Firebase Admin SDK Initialization
+// 1. Firebase Admin SDK Initialization (Render Environment + Local File Handling)
 let serviceAccount;
 
 try {
-  serviceAccount = require('./serviceAccountKey.json');
-} catch (err) {
-  console.error('❌ Failed to load serviceAccountKey.json');
-  process.exit(1);
-}
+  if (process.env.serviceAccountKey) {
+    // Render या Production Environment के लिए Environment Variable से लोड करें
+    serviceAccount = JSON.parse(process.env.serviceAccountKey);
+  } else {
+    // Local Testing के लिए फ़ाइल से लोड करें
+    serviceAccount = require('./serviceAccountKey.json');
+  }
 
-try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
@@ -125,6 +126,8 @@ app.post('/api/users/sync', authenticateUser, async (req, res) => {
         email: resolvedEmail,
         updated_at: admin.firestore.FieldValue.serverTimestamp(),
       };
+      if (username) updates.username = username;
+      
       await userRef.set(updates, { merge: true });
       return res.status(200).json({ success: true, message: 'User updated successfully.' });
     }
@@ -253,9 +256,10 @@ app.get('/api/following/:uid', authenticateUser, async (req, res) => {
 app.post('/api/gallery/add', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.user;
-    const { imageUrl } = req.body;
+    const { imageUrl, imageBase64 } = req.body;
+    const photoToSave = imageUrl || imageBase64;
 
-    if (!imageUrl) return res.status(400).json({ success: false, message: 'Image URL required.' });
+    if (!photoToSave) return res.status(400).json({ success: false, message: 'Image data required.' });
 
     const userRef = usersCollection.doc(uid);
     const userSnap = await userRef.get();
@@ -269,12 +273,27 @@ app.post('/api/gallery/add', authenticateUser, async (req, res) => {
     }
 
     await userRef.update({
-      gallery_photos: admin.firestore.FieldValue.arrayUnion(imageUrl)
+      gallery_photos: admin.firestore.FieldValue.arrayUnion(photoToSave)
     });
 
     res.status(200).json({ success: true, message: 'Photo added to gallery!' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Gallery error.' });
+  }
+});
+
+// Get User Gallery Photos API
+app.get('/api/gallery/:uid', authenticateUser, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const userSnap = await usersCollection.doc(uid).get();
+
+    if (!userSnap.exists) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    const photos = userSnap.data().gallery_photos || [];
+    res.status(200).json({ success: true, count: photos.length, photos });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Get gallery error.' });
   }
 });
 
