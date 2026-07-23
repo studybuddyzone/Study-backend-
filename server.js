@@ -1,5 +1,5 @@
 /**
- * StudyBuddyZone Backend - Step 3 (Firestore + Search + Follow System)
+ * StudyBuddyZone Backend - Step 4 (Firestore + Search + Follow + Gallery Engine)
  */
 
 require('dotenv').config();
@@ -70,7 +70,7 @@ async function authenticateUser(req, res, next) {
   }
 }
 
-// 4. In-Memory Search Cache (Firestore Reads बचाने के लिए)
+// 4. In-Memory Search Cache
 const SEARCH_CACHE_TTL_MS = 60 * 1000;
 const searchCache = new Map();
 
@@ -124,6 +124,7 @@ app.post('/api/users/sync', authenticateUser, async (req, res) => {
       email: resolvedEmail,
       username: username || null,
       photo_url: photoURL || null,
+      gallery_photos: [], // 8-10 तस्वीरें स्टोर करने के लिए ऐरे
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
     };
@@ -237,7 +238,65 @@ app.get('/api/following/:uid', authenticateUser, async (req, res) => {
   }
 });
 
-// 7. Start Server
+// 7. Limited Photo Gallery Engine (Max 10 Photos)
+app.post('/api/gallery/add', authenticateUser, async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const { imageUrl } = req.body;
+
+    if (!imageUrl) {
+      return res.status(400).json({ success: false, message: 'Image URL आवश्यक है।' });
+    }
+
+    const userRef = usersCollection.doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ success: false, message: 'User नहीं मिला।' });
+    }
+
+    const currentPhotos = userSnap.data().gallery_photos || [];
+
+    // लिमिट चेक: अधिकतम 10 तस्वीरें
+    if (currentPhotos.length >= 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'सीमा समाप्त: आप अधिकतम 10 फ़ोटो ही अपलोड कर सकते हैं।'
+      });
+    }
+
+    await userRef.update({
+      gallery_photos: admin.firestore.FieldValue.arrayUnion(imageUrl)
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'फ़ोटो गैलरी में सफलतापूर्वक जुड़ गई!',
+      photosCount: currentPhotos.length + 1
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Gallery error.' });
+  }
+});
+
+// फ़ोटो हटाने के लिए
+app.post('/api/gallery/remove', authenticateUser, async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const { imageUrl } = req.body;
+
+    const userRef = usersCollection.doc(uid);
+    await userRef.update({
+      gallery_photos: admin.firestore.FieldValue.arrayRemove(imageUrl)
+    });
+
+    res.status(200).json({ success: true, message: 'फ़ोटो गैलरी से हटा दी गई!' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Delete photo error.' });
+  }
+});
+
+// 8. Start Server
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
