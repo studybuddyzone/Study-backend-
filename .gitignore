@@ -1,0 +1,13 @@
+# Node Modules
+node_modules/
+
+# Environment variables
+.env
+
+# Firebase Admin Service Account Key
+serviceAccountKey.json
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
