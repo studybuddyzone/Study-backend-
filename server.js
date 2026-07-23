@@ -36,19 +36,22 @@ const usersCollection = db.collection('users');
 const followsCollection = db.collection('follows');
 const messagesCollection = db.collection('messages');
 
-// 2. Express & HTTP Server Setup (for Socket.io)
+// 2. Express & HTTP Server Setup (CORS and Transports Fixed)
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST']
-  }
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  allowEIO3: true,
+  transports: ['websocket', 'polling']
 });
 
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: '*' }));
+app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -336,10 +339,8 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
   console.log(`⚡ User connected to Live Chat: ${socket.user.uid}`);
 
-  // यूजर को उसके पर्सनल रूम में जॉइन कराएं
   socket.join(socket.user.uid);
 
-  // लाइव मैसेज रिसीव और सेंड करने का लॉजिक
   socket.on('send_message', async (data) => {
     const { receiverId, text } = data;
     const senderId = socket.user.uid;
@@ -356,10 +357,8 @@ io.on('connection', (socket) => {
       timestamp: new Date().toISOString()
     };
 
-    // Receiver की स्क्रीन पर मैसेज तुरंत भेजें
     io.to(receiverId).emit('receive_message', messageData);
 
-    // चैट हिस्ट्री के लिए DB में सेव करें
     try {
       await messagesCollection.add(messageData);
     } catch (err) {
@@ -376,3 +375,4 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`✅ Server running with Socket.io Chat Engine on port ${PORT}`);
 });
+                                         
