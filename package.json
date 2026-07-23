@@ -1,0 +1,23 @@
+{
+  "name": "studybuddyzone-backend",
+  "version": "1.0.0",
+  "description": "Backend server for StudyBuddyZone - offloads heavy social features (search, messaging, follower systems, photo gallery) from Firebase Firestore to stay within the Spark free plan.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "studybuddyzone",
+    "firebase",
+    "express",
+    "backend"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.3.1"
+  }
+}
