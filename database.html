@@ -1,0 +1,2192 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SBPP-DATABASE</title>
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" href="https://i.ibb.co/knMfLc2/icon-512.png">
+<link rel="apple-touch-icon" href="https://i.ibb.co/knMfLc2/icon-512.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f0f0f0">
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
+
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ══ LIGHT THEME (Default) ══ */
+  :root {
+    --bg: #f0f2f7;
+    --surface: #ffffff;
+    --card: #ffffff;
+    --card2: #f8f9fc;
+    --border: #e2e6ef;
+    --border2: #cdd3e0;
+    --accent: #4f6ef7;
+    --accent2: #7c5cfc;
+    --accent3: #00b87a;
+    --danger: #f74f6a;
+    --text: #0f1523;
+    --text2: #3a4460;
+    --muted: #8892aa;
+    --success: #00b87a;
+    --shadow-sm: 0 1px 3px rgba(15,21,35,0.07), 0 1px 2px rgba(15,21,35,0.04);
+    --shadow-md: 0 4px 12px rgba(15,21,35,0.09), 0 2px 4px rgba(15,21,35,0.05);
+    --shadow-lg: 0 10px 28px rgba(15,21,35,0.10), 0 4px 8px rgba(15,21,35,0.06);
+    --shadow-accent: 0 6px 20px rgba(79,110,247,0.28);
+    --header-blur: rgba(255,255,255,0.88);
+  }
+
+  /* ══ DARK THEME ══ */
+  body.dark-mode {
+    --bg: #0a0d14;
+    --surface: #111622;
+    --card: #161d2e;
+    --card2: #0f1520;
+    --border: #1e2a42;
+    --border2: #263350;
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --accent3: #00d2a0;
+    --danger: #f74f6a;
+    --text: #e8ecf4;
+    --text2: #a8b4cc;
+    --muted: #6b7a99;
+    --success: #00d2a0;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,0.5);
+    --shadow-accent: 0 6px 24px rgba(79,142,247,0.35);
+    --header-blur: rgba(17,22,34,0.9);
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+    transition: background 0.3s ease, color 0.3s ease;
+  }
+
+  /* ══ Scrollbar ══ */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* ══ Header ══ */
+  header {
+    background: var(--header-blur);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    box-shadow: var(--shadow-sm);
+    transition: background 0.3s ease, border-color 0.3s ease;
+  }
+
+  .logo-icon {
+    width: 38px; height: 38px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px;
+    box-shadow: var(--shadow-accent);
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-size: 1.1rem; font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ══ Theme Toggle Button ══ */
+  .theme-toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px 5px;
+    margin-left: 12px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+  }
+
+  .theme-btn {
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    padding: 6px 13px;
+    border: none; border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.75rem; font-weight: 600;
+    cursor: pointer;
+    transition: all 0.22s ease;
+    background: transparent;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .theme-btn.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+  .theme-btn:hover:not(.active) { color: var(--text2); }
+
+  /* ══ Live Stats ══ */
+  .live-stats-box {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .live-dot {
+    width: 7px; height: 7px;
+    background: var(--accent3);
+    border-radius: 50%;
+    display: inline-block;
+    animation: pulse-dot 1.4s ease-in-out infinite;
+    box-shadow: 0 0 6px var(--accent3);
+  }
+
+  .db-status-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-left: auto;
+    display: flex; align-items: center; gap: 5px;
+  }
+
+  /* ══ Layout ══ */
+  .container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+  /* ══ Page Title Row ══ */
+  .page-header {
+    margin-bottom: 28px;
+  }
+  .page-header h2 {
+    font-size: 1.55rem; font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .page-header p { font-size: 0.84rem; color: var(--muted); }
+
+  /* ══ Tab Nav ══ */
+  .tabs {
+    display: flex; gap: 0; margin-bottom: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 5px;
+    width: fit-content;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+  }
+  .tab-btn {
+    padding: 9px 20px;
+    border: none; background: transparent;
+    color: var(--muted); font-family: 'Inter', sans-serif;
+    font-size: 0.84rem; font-weight: 500;
+    border-radius: 10px; cursor: pointer;
+    transition: all 0.18s;
+    display: flex; align-items: center; gap: 7px;
+    letter-spacing: -0.01em;
+  }
+  .tab-btn.active {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+    box-shadow: var(--shadow-accent);
+    font-weight: 600;
+  }
+  .tab-btn:hover:not(.active) { color: var(--text2); background: var(--bg); }
+  .tab-icon { font-size: 14px; }
+
+  /* ══ Section Card ══ */
+  .section-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-md);
+    transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  .section-card:hover { box-shadow: var(--shadow-lg); }
+
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 22px;
+  }
+  .section-title {
+    font-size: 1rem; font-weight: 700;
+    display: flex; align-items: center; gap: 9px;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  /* ══ Badges ══ */
+  .badge {
+    font-size: 0.68rem; font-family: 'JetBrains Mono', monospace;
+    background: rgba(79,110,247,0.10); color: var(--accent);
+    border: 1px solid rgba(79,110,247,0.22);
+    padding: 2px 9px; border-radius: 20px;
+    font-weight: 600; letter-spacing: 0.02em;
+  }
+  .badge.green {
+    background: rgba(0,184,122,0.10); color: var(--accent3);
+    border-color: rgba(0,184,122,0.22);
+  }
+  .badge.purple {
+    background: rgba(124,92,252,0.10); color: var(--accent2);
+    border-color: rgba(124,92,252,0.22);
+  }
+
+  /* ══ Buttons ══ */
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px; border: none; border-radius: 10px;
+    font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s cubic-bezier(.4,0,.2,1);
+    text-decoration: none; letter-spacing: -0.01em;
+    position: relative; overflow: hidden;
+  }
+  .btn::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0);
+    transition: background 0.15s;
+  }
+  .btn:hover::after { background: rgba(255,255,255,0.08); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+    box-shadow: var(--shadow-accent);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(79,110,247,0.38); }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-secondary {
+    background: var(--card2);
+    color: var(--text2);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+
+  .btn-success {
+    background: linear-gradient(135deg, #00a06a, var(--accent3));
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(0,184,122,0.28);
+  }
+  .btn-success:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,184,122,0.38); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+  .btn-danger {
+    background: linear-gradient(135deg, #d92c4a, var(--danger));
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(247,79,106,0.32);
+  }
+  .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(247,79,106,0.42); }
+
+  .user-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;
+    font-size: 0.82rem; color: var(--text2);
+  }
+  .user-row button {
+    background: rgba(247,79,106,0.1); color: var(--danger);
+    border: 1px solid rgba(247,79,106,0.3); border-radius: 8px;
+    padding: 5px 12px; font-size: 0.75rem; font-weight: 600; cursor: pointer;
+  }
+  .user-row button:hover { background: rgba(247,79,106,0.2); }
+
+  /* ══ Status / Log ══ */
+  .status-box {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.77rem;
+    color: var(--muted);
+    max-height: 150px;
+    overflow-y: auto;
+    line-height: 1.8;
+    transition: all 0.3s ease;
+  }
+  .status-box .log-ok { color: var(--accent3); }
+  .status-box .log-err { color: var(--danger); }
+  .status-box .log-info { color: var(--accent); }
+
+  /* ══ Data Preview ══ */
+  .data-preview {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text2);
+    max-height: 220px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.65;
+    transition: all 0.3s ease;
+  }
+
+  /* ══ Select ══ */
+  select.form-select {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s ease;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238892aa' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 32px;
+  }
+  select.form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,110,247,0.12); }
+
+  /* ══ Checkbox ══ */
+  .check-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.83rem; color: var(--text2);
+    cursor: pointer; font-weight: 500;
+  }
+  .check-label input[type="checkbox"] {
+    width: 16px; height: 16px;
+    accent-color: var(--accent2);
+    cursor: pointer;
+  }
+
+  /* ══ Stats Row ══ */
+  .stats-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+  .stat-chip {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 16px;
+    font-size: 0.81rem;
+    color: var(--muted);
+    display: flex; align-items: center; gap: 7px;
+    box-shadow: var(--shadow-sm);
+    font-weight: 500;
+    transition: all 0.3s ease;
+  }
+  .stat-chip strong { color: var(--text); font-weight: 700; }
+
+  /* ══ Collection List ══ */
+  .coll-list { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+  .coll-chip {
+    background: rgba(124,92,252,0.08);
+    border: 1px solid rgba(124,92,252,0.22);
+    color: var(--accent2);
+    border-radius: 8px;
+    padding: 5px 13px;
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.16s;
+    letter-spacing: 0.01em;
+  }
+  .coll-chip:hover { background: rgba(124,92,252,0.18); transform: translateY(-1px); }
+  .coll-chip.selected { background: var(--accent2); color: #fff; box-shadow: 0 4px 12px rgba(124,92,252,0.3); }
+
+  /* ══ Divider ══ */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+
+  /* ══ Panel ══ */
+  .panel { display: none; }
+  .panel.active { display: block; animation: fadeIn 0.18s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ══ Spinner ══ */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.65); }
+  }
+
+  /* ══ Auth Grid ══ */
+  .auth-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px; margin: 12px 0;
+  }
+  .auth-card {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-sm);
+  }
+  .auth-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .auth-card .uid {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.66rem; color: var(--muted);
+    word-break: break-all;
+  }
+  .auth-card .email { font-size: 0.84rem; font-weight: 600; margin-top: 5px; color: var(--text); }
+  .auth-card .provider { font-size: 0.7rem; color: var(--accent3); margin-top: 3px; font-weight: 500; }
+
+  /* ══ Compare Table ══ */
+  .cmp-table {
+    width: 100%; border-collapse: collapse; font-size: 0.82rem;
+  }
+  .cmp-table thead tr {
+    text-align: left;
+    color: var(--muted);
+    border-bottom: 2px solid var(--border);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .cmp-table thead th { padding: 10px 12px; }
+  .cmp-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+  }
+  .cmp-table tbody tr:hover { background: var(--card2); }
+  .cmp-table tbody td { padding: 10px 12px; }
+
+  /* ══ Metric Cards (Compare) ══ */
+  .metric-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+  }
+  .metric-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .metric-label { font-size: 0.73rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+  .metric-value { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.04em; margin-top: 6px; line-height: 1; }
+  .metric-sub { font-size: 0.72rem; color: var(--muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+  /* ══ Action Row ══ */
+  .action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  /* ══ Responsive ══ */
+  @media(max-width: 768px) {
+    .tabs { flex-direction: column; width: 100%; }
+    header { padding: 0 16px; }
+    .container { padding: 20px 14px; }
+    .section-card { padding: 18px 16px; }
+    .live-stats-box { display: none; }
+    .theme-toggle-wrap { margin-left: auto; }
+    header h1 { font-size: 0.95rem; }
+    .metric-value { font-size: 1.8rem; }
+  }
+</style>
+</head>
+<body>
+<!-- ══ Admin new-user notification: sound + toast mount points ══ -->
+<audio id="notif-sound" src="notification.mp3" preload="auto"></audio>
+<div id="toast-container"></div>
+<script>
+  // Client-side login gate: added on top of the existing dashboard,
+  // nothing below this block was changed.
+  if (sessionStorage.getItem('sbpp_authed') !== 'true') {
+    window.location.replace('index.html');
+  }
+</script>
+
+<header>
+  <div class="logo-icon">🔥</div>
+  <h1>Firebase PDF Maker</h1>
+
+  <!-- Live Stats -->
+  <div class="live-stats-box" id="live-stats-box" style="margin-left:16px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="live-dot"></span>
+      <span style="color:var(--muted);">Live</span>
+      <strong id="live-online-count" style="color:var(--accent3);">…</strong>
+    </div>
+    <div style="color:var(--border2);">|</div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span style="color:var(--muted);">Total IDs</span>
+      <strong id="live-total-ids" style="color:var(--accent);">…</strong>
+    </div>
+  </div>
+
+  <!-- Theme Toggle -->
+  <div class="theme-toggle-wrap" style="margin-left:auto;">
+    <button class="theme-btn active" id="btn-light" onclick="setTheme('light')">☀️ Light</button>
+    <button class="theme-btn" id="btn-dark" onclick="setTheme('dark')">🌙 Dark</button>
+  </div>
+
+  <div class="db-status-badge" id="db-status">● Connecting…</div>
+
+  <!-- 🔔 Recent new-user notifications button -->
+  <div style="position:relative; margin-left:8px;">
+    <button class="theme-btn" id="notif-bell-btn" onclick="toggleNotifPanel()">
+      🔔 New Users <span id="notif-bell-count" style="display:none;background:#ff4d4f;color:#fff;border-radius:999px;padding:1px 7px;font-size:0.75rem;margin-left:4px;">0</span>
+    </button>
+    <div id="notif-panel" style="display:none; position:absolute; right:0; top:calc(100% + 8px); width:320px; max-height:400px; overflow-y:auto; background:var(--surface,#fff); border:1px solid var(--border,#e2e6ef); border-radius:10px; box-shadow:0 12px 30px rgba(15,21,35,0.18); z-index:9999;">
+      <div style="padding:10px 14px; border-bottom:1px solid var(--border,#e2e6ef); font-weight:700; display:flex; justify-content:space-between; align-items:center;">
+        <span>Recently Joined</span>
+        <span style="cursor:pointer; font-weight:400; font-size:0.8rem; color:var(--accent,#4f6ef7);" onclick="loadRecentNotifications()">↻ Refresh</span>
+      </div>
+      <div id="notif-panel-list" style="padding:6px 0;">
+        <div style="padding:14px; color:var(--muted,#888); font-size:0.9rem;">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="theme-btn" style="margin-left:8px;" onclick="sessionStorage.removeItem('sbpp_authed'); sessionStorage.removeItem('sbpp_idToken'); window.location.replace('index.html');">🔒 Logout</button>
+</header>
+
+<div class="container">
+
+  <div class="page-header">
+    <h2>Firebase Database Explorer</h2>
+    <p>Realtime Database, Firestore और Authentication data को PDF में export करें</p>
+  </div>
+
+  <!-- ══ GLOBAL SEARCH ══ -->
+  <div class="section-card" style="margin-bottom:16px;">
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <div style="flex:1; min-width:220px; position:relative;">
+        <input id="global-search-input" type="text" placeholder="🔍 User खोजें — UID, email, phone, name या PRN डालें…"
+          style="width:100%; padding:11px 14px; border-radius:10px; border:1.5px solid var(--border2); background:var(--bg); color:var(--text); font-size:0.92rem;"
+          onkeydown="if(event.key==='Enter') runGlobalSearch();" />
+      </div>
+      <button class="btn btn-primary" onclick="runGlobalSearch()">Search</button>
+      <button class="btn btn-secondary" onclick="clearGlobalSearch()">Clear</button>
+    </div>
+    <div id="global-search-results" style="margin-top:14px;"></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('rtdb')">
+      <span class="tab-icon">🗄️</span> Realtime Database
+    </button>
+    <button class="tab-btn" onclick="switchTab('firestore')">
+      <span class="tab-icon">📋</span> Firestore
+    </button>
+    <button class="tab-btn" onclick="switchTab('auth')">
+      <span class="tab-icon">🔐</span> Authentication
+    </button>
+    <button class="tab-btn" onclick="switchTab('compare')">
+      <span class="tab-icon">📊</span> Compare
+    </button>
+    <button class="tab-btn" onclick="switchTab('edit')" style="color:var(--accent3);">
+      <span class="tab-icon">✏️</span> Edit
+    </button>
+    <button class="tab-btn" onclick="switchTab('danger')" style="color:var(--danger);">
+      <span class="tab-icon">🗑️</span> Danger Zone
+    </button>
+  </div>
+
+  <!-- ══ REALTIME DATABASE PANEL ══ -->
+  <div id="panel-rtdb" class="panel active">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">🗄️ Realtime Database <span class="badge">RTDB</span></div>
+        <button class="btn btn-secondary" onclick="loadRTDB()">↻ Reload Data</button>
+      </div>
+
+      <div class="stats-row" id="rtdb-stats">
+        <div class="stat-chip">Status: <strong id="rtdb-status-txt">Not loaded</strong></div>
+        <div class="stat-chip">Records: <strong id="rtdb-count">–</strong></div>
+        <div class="stat-chip">Size: <strong id="rtdb-size">–</strong></div>
+      </div>
+
+      <div id="rtdb-preview" class="data-preview">Loading data…</div>
+      <hr class="divider" />
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="rtdb-pdf-btn" onclick="generateRTDBPdf()" disabled>
+          📄 Generate PDF
+        </button>
+        <select id="rtdb-format" class="form-select">
+          <option value="table">Table Format</option>
+          <option value="json">JSON Format</option>
+          <option value="list">List Format</option>
+        </select>
+      </div>
+
+      <div class="status-box" id="rtdb-log" style="margin-top:16px;">Waiting…</div>
+    </div>
+  </div>
+
+  <!-- ══ FIRESTORE PANEL ══ -->
+  <div id="panel-firestore" class="panel">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">📋 Firestore <span class="badge purple">Collections</span></div>
+        <button class="btn btn-secondary" onclick="loadFirestore()">↻ Scan Collections</button>
+      </div>
+
+      <p style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;">Firestore collections मिलती हैं, उन्हें select करें:</p>
+      <div class="coll-list" id="fs-collections">
+        <span style="color:var(--muted);font-size:0.82rem;">पहले "Scan Collections" दबाएँ…</span>
+      </div>
+
+      <div id="fs-stats" class="stats-row" style="display:none;">
+        <div class="stat-chip">Selected: <strong id="fs-selected-name">–</strong></div>
+        <div class="stat-chip">Docs: <strong id="fs-doc-count">–</strong></div>
+      </div>
+
+      <div id="fs-preview" class="data-preview" style="margin-top:12px;">Collection select करें…</div>
+      <hr class="divider" />
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="fs-pdf-btn" onclick="generateFirestorePdf()" disabled>
+          📄 Generate PDF
+        </button>
+        <select id="fs-format" class="form-select">
+          <option value="table">Table Format</option>
+          <option value="cards">Card Format</option>
+          <option value="json">JSON Format</option>
+        </select>
+        <label class="check-label">
+          <input type="checkbox" id="fs-all" /> All Collections
+        </label>
+      </div>
+
+      <div class="status-box" id="fs-log" style="margin-top:16px;">Waiting…</div>
+    </div>
+  </div>
+
+  <!-- ══ AUTHENTICATION PANEL ══ -->
+  <div id="panel-auth" class="panel">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">🔐 Authentication <span class="badge green">Users</span></div>
+        <button class="btn btn-secondary" onclick="loadAuthUsers()">↻ Load Users</button>
+      </div>
+
+      <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;">
+        ⚠️ Firebase Auth user list client SDK से directly नहीं मिलती। यह tool current logged-in user + Realtime DB में stored auth data use करता है।
+        पूरी user list के लिए Admin SDK चाहिए।
+      </p>
+
+      <div class="stats-row" id="auth-stats">
+        <div class="stat-chip">Current User: <strong id="auth-current">Not signed in</strong></div>
+        <div class="stat-chip">DB Users Found: <strong id="auth-db-count">–</strong></div>
+      </div>
+
+      <div id="auth-grid" class="auth-grid"></div>
+      <div id="auth-preview" class="data-preview" style="margin-top:12px;">Load users to preview…</div>
+
+      <hr class="divider" />
+      <div class="action-row">
+        <button class="btn btn-success" id="auth-pdf-btn" onclick="generateAuthPdf()" disabled>
+          📄 Generate Auth PDF
+        </button>
+        <select id="auth-format" class="form-select">
+          <option value="table">Table Format</option>
+          <option value="detailed">Detailed Format</option>
+        </select>
+      </div>
+      <div class="status-box" id="auth-log" style="margin-top:16px;">Waiting…</div>
+    </div>
+  </div>
+
+  <!-- ══ COMPARE PANEL ══ -->
+  <div id="panel-compare" class="panel">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">📊 Live Comparison <span class="badge purple">RTDB vs Firestore vs Auth</span></div>
+        <button class="btn btn-secondary" onclick="loadCompareData()">↻ Refresh All</button>
+      </div>
+
+      <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">
+        तीनों जगह (Realtime Database, Firestore, Authentication-derived records) से students/users का data खींचकर compare किया जाता है — कितने अभी live/online हैं और कितने total अब तक register हो चुके हैं।
+      </p>
+
+      <div class="auth-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">
+        <div class="metric-card" style="border-color:rgba(0,184,122,0.3);">
+          <div class="metric-label" style="color:var(--accent3);">🟢 LIVE अभी ONLINE</div>
+          <div class="metric-value" id="cmp-live" style="color:var(--accent3);">…</div>
+          <div class="metric-sub">Presence / Active Sessions</div>
+        </div>
+        <div class="metric-card" style="border-color:rgba(79,110,247,0.3);">
+          <div class="metric-label" style="color:var(--accent);">🗄️ Realtime DB — Unique PRN</div>
+          <div class="metric-value" id="cmp-rtdb" style="color:var(--accent);">…</div>
+          <div class="metric-sub">students-e5183-rtdb</div>
+        </div>
+        <div class="metric-card" style="border-color:rgba(124,92,252,0.3);">
+          <div class="metric-label" style="color:var(--accent2);">📋 Firestore — Unique PRN</div>
+          <div class="metric-value" id="cmp-fs" style="color:var(--accent2);">…</div>
+          <div class="metric-sub">students-e5183</div>
+        </div>
+        <div class="metric-card" style="border-color:rgba(0,184,122,0.3);">
+          <div class="metric-label" style="color:var(--accent3);">🔐 Auth-derived — Unique PRN</div>
+          <div class="metric-value" id="cmp-auth" style="color:var(--text);">…</div>
+          <div class="metric-sub">Union of all sources</div>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="stats-row">
+        <div class="stat-chip" style="background:linear-gradient(135deg, rgba(79,110,247,0.08), rgba(124,92,252,0.08)); border-color:rgba(124,92,252,0.25);">
+          🧮 सभी sources मिलाकर Total Unique PRN: <strong id="cmp-total" style="color:var(--accent2);font-size:1.05rem;">…</strong>
+        </div>
+      </div>
+
+      <div id="cmp-table-wrap" style="margin-top:16px;overflow-x:auto;">
+        <table class="cmp-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Path / Collection</th>
+              <th>Unique PRN</th>
+            </tr>
+          </thead>
+          <tbody id="cmp-table-body">
+            <tr><td colspan="3" style="padding:12px;color:var(--muted);">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="status-box" id="cmp-log" style="margin-top:16px;">Waiting…</div>
+    </div>
+  </div>
+
+  <!-- ══ EDIT PANEL ══ -->
+  <div id="panel-edit" class="panel">
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">✏️ Edit User Data <span class="badge">Realtime Database · Live Write</span></div>
+      </div>
+
+      <p style="color:var(--muted); font-size:0.86rem; margin-bottom:14px;">
+        RTDB में कोई भी path डालो (जैसे <code>users/ABC123</code>) या ऊपर वाले 🔍 Search से किसी user का "Edit" button दबाओ।
+      </p>
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+        <input id="edit-path-input" type="text" placeholder="जैसे: users/2101RM1001"
+          style="flex:1; min-width:220px; padding:10px 14px; border-radius:10px; border:1.5px solid var(--border2); background:var(--bg); color:var(--text); font-size:0.9rem;"
+          onkeydown="if(event.key==='Enter') loadEditPath();" />
+        <button class="btn btn-primary" onclick="loadEditPath()">Load</button>
+      </div>
+
+      <div id="edit-fields-wrap" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-weight:700; color:var(--text);" id="edit-path-label"></div>
+          <button class="btn btn-secondary" onclick="addEditField()">+ Field जोड़ें</button>
+        </div>
+        <div id="edit-fields-list" style="display:flex; flex-direction:column; gap:8px; max-height:520px; overflow-y:auto; padding-right:4px;"></div>
+        <div class="action-row" style="margin-top:16px;">
+          <button class="btn btn-primary" id="edit-save-btn" onclick="saveEditFields()">💾 Save Changes</button>
+          <button class="btn btn-secondary" onclick="loadEditPath()">↻ Reload (unsaved changes discard होंगे)</button>
+        </div>
+      </div>
+
+      <div class="status-box" id="edit-log" style="margin-top:16px;">Ready…</div>
+    </div>
+  </div>
+
+  <!-- ══ DANGER ZONE PANEL ══ -->
+  <div id="panel-danger" class="panel">
+    <div class="section-card" style="border-color:rgba(247,79,106,0.35);">
+      <div class="section-header">
+        <div class="section-title" style="color:var(--danger);">🗑️ Danger Zone <span class="badge" style="background:rgba(247,79,106,0.1);color:var(--danger);border-color:rgba(247,79,106,0.3);">Server-side · Admin SDK</span></div>
+        <button class="btn btn-secondary" onclick="loadDangerUsers()">↻ Load Users</button>
+      </div>
+
+      <p style="font-size:0.82rem;color:var(--muted);margin-bottom:14px;">
+        ⚠️ यह सभी actions <strong>backend (/api)</strong> के through Firebase Admin SDK से होते हैं, client rules से नहीं। हर action <strong>permanent</strong> है — undo नहीं हो सकता।
+      </p>
+
+      <div class="action-row" style="margin-bottom:10px;">
+        <select id="danger-source" class="form-select" onchange="loadDangerUsers()">
+          <option value="rtdb">Realtime Database</option>
+          <option value="firestore">Firestore</option>
+          <option value="auth">Authentication</option>
+        </select>
+      </div>
+
+      <div class="action-row" style="margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-danger" onclick="wipeSource('rtdb')">🗄️ Wipe Realtime Database</button>
+        <button class="btn btn-danger" onclick="wipeSource('auth')">🔐 Wipe Authentication</button>
+        <button class="btn btn-danger" onclick="wipeSource('firestore')">📋 Wipe Firestore</button>
+        <button class="btn btn-danger" id="danger-delete-all-btn" onclick="confirmDeleteAll()" style="margin-left:auto;">
+          💣 Delete ALL (सभी तीनों)
+        </button>
+      </div>
+
+      <p style="font-size:0.78rem;color:var(--muted);margin-bottom:8px;">ऊपर dropdown से source बदलने पर नीचे उसकी पूरी user list आ जाएगी — हर user के आगे individual Delete button है।</p>
+      <div id="danger-user-list" class="auth-grid"></div>
+      <div class="status-box" id="danger-log" style="margin-top:16px;">Waiting…</div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ══════════════════════════════════
+// Firebase Init
+// ══════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyCZhDPaVY7jv_hXtHdpVqUcGe1hwAxvZmc",
+  authDomain: "students-e5183.firebaseapp.com",
+  databaseURL: "https://students-e5183-default-rtdb.firebaseio.com",
+  projectId: "students-e5183",
+  storageBucket: "students-e5183.firebasestorage.app",
+  messagingSenderId: "473442117683",
+  appId: "1:473442117683:web:f39adc0665317aa95e9b46",
+  measurementId: "G-DT4XQLZJW3"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db      = firebase.database();
+const fstore  = firebase.firestore();
+const auth    = firebase.auth();
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN NEW-USER NOTIFICATIONS (push + in-app toast/sound)
+// Requires firebase-messaging-sw.js at the site root (separate file —
+// browsers only allow service workers as standalone files, can't inline).
+// ══════════════════════════════════════════════════════════════
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker
+    .register("/firebase-messaging-sw.js")
+    .then((reg) => console.log("[FCM] Service worker registered:", reg.scope))
+    .catch((err) => console.error("[FCM] Service worker registration failed:", err));
+}
+
+async function setupAdminPushNotifications() {
+  try {
+    const messaging = firebase.messaging();
+
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      console.warn("[FCM] Notification permission not granted:", permission);
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+
+    const token = await messaging.getToken({
+      // 🔑 Firebase Console → Project Settings → Cloud Messaging →
+      // "Web Push certificates" → generate/copy your VAPID key, paste here.
+      vapidKey: "BNsWt1DtYBpjtmaBQLQi8XCsOutKYrNWikbpbhdHwO7tResap4QreCE1xmHr9acfGRsUTpFDEDq5hSDZv4YQkRU",
+      serviceWorkerRegistration: registration,
+    });
+
+    if (!token) {
+      console.warn("[FCM] No registration token available.");
+      return;
+    }
+
+    console.log("[FCM] Admin token obtained:", token);
+
+    await fstore.collection("admin_tokens").doc("main_admin").set(
+      {
+        token: token,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        userAgent: navigator.userAgent,
+      },
+      { merge: true }
+    );
+    console.log("[FCM] Token saved to Firestore: admin_tokens/main_admin");
+
+    messaging.onTokenRefresh(async () => {
+      const refreshed = await messaging.getToken({
+        vapidKey: "BNsWt1DtYBpjtmaBQLQi8XCsOutKYrNWikbpbhdHwO7tResap4QreCE1xmHr9acfGRsUTpFDEDq5hSDZv4YQkRU",
+        serviceWorkerRegistration: registration,
+      });
+      await fstore.collection("admin_tokens").doc("main_admin").set(
+        { token: refreshed, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+      console.log("[FCM] Token refreshed and re-saved.");
+    });
+
+    // Foreground pushes don't trigger the service worker's onBackgroundMessage,
+    // so just log them here — the onSnapshot listener below already shows the
+    // in-app toast for this case, avoiding a duplicate OS notification.
+    messaging.onMessage((payload) => {
+      console.log("[FCM] Foreground push received:", payload);
+    });
+  } catch (err) {
+    console.error("[FCM] Setup failed:", err);
+  }
+}
+
+let notifListenerStarted = false;
+
+function startInAppNotificationListener() {
+  if (notifListenerStarted) return;
+  notifListenerStarted = true;
+
+  const startTime = firebase.firestore.Timestamp.now();
+
+  fstore
+    .collection("notifications")
+    .where("createdAt", ">", startTime) // ignore old history on page load
+    .orderBy("createdAt")
+    .onSnapshot(
+      (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === "added") {
+            const data = change.doc.data();
+            playNotificationSound();
+            showToast({
+              title: data.title || "🚀 New User Registered!",
+              body: data.body || "",
+            });
+            notifUnreadCount++;
+            updateNotifBadge();
+            const panel = document.getElementById("notif-panel");
+            if (panel && panel.style.display !== "none") loadRecentNotifications();
+          }
+        });
+      },
+      (err) => console.error("[Notifications] onSnapshot listener error:", err)
+    );
+}
+
+function playNotificationSound() {
+  const audioEl = document.getElementById("notif-sound");
+  if (!audioEl) return;
+  audioEl.currentTime = 0;
+  audioEl.play().catch((err) => {
+    // Blocked until the admin interacts with the page once — expected on first load.
+    console.warn("[Notifications] Sound blocked until user interacts with page:", err.message);
+  });
+}
+
+function showToast({ title, body }) {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+
+  const toast = document.createElement("div");
+  toast.className = "admin-toast";
+  toast.innerHTML = `
+    <div class="admin-toast-title">${title}</div>
+    <div class="admin-toast-body">${body}</div>
+  `;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("admin-toast-out");
+    setTimeout(() => toast.remove(), 300);
+  }, 6000);
+
+  toast.addEventListener("click", () => {
+    toast.classList.add("admin-toast-out");
+    setTimeout(() => toast.remove(), 300);
+  });
+}
+
+(function injectToastStyles() {
+  const style = document.createElement("style");
+  style.textContent = `
+    #toast-container { position: fixed; top: 20px; right: 20px; z-index: 99999; display: flex; flex-direction: column; gap: 10px; }
+    .admin-toast { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); box-shadow: 0 10px 28px rgba(15,21,35,0.15); border-radius: 10px; padding: 12px 16px; min-width: 260px; max-width: 340px; cursor: pointer; animation: admin-toast-in 0.25s ease; color: var(--text); }
+    .admin-toast-title { font-weight: 700; margin-bottom: 4px; }
+    .admin-toast-body { font-size: 0.85rem; color: var(--text2); }
+    .admin-toast-out { animation: admin-toast-out 0.3s ease forwards; }
+    @keyframes admin-toast-in { from { opacity:0; transform: translateX(30px);} to { opacity:1; transform: translateX(0);} }
+    @keyframes admin-toast-out { to { opacity:0; transform: translateX(30px);} }
+  `;
+  document.head.appendChild(style);
+})();
+
+// ══════════════════════════════════════════════════════════════
+// 🔔 Notification bell — recent-joins panel
+// ══════════════════════════════════════════════════════════════
+
+let notifUnreadCount = 0;
+
+function updateNotifBadge() {
+  const badge = document.getElementById("notif-bell-count");
+  if (!badge) return;
+  if (notifUnreadCount > 0) {
+    badge.style.display = "inline-block";
+    badge.textContent = notifUnreadCount > 99 ? "99+" : notifUnreadCount;
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function toggleNotifPanel() {
+  const panel = document.getElementById("notif-panel");
+  if (!panel) return;
+  const opening = panel.style.display === "none";
+  panel.style.display = opening ? "block" : "none";
+  if (opening) {
+    notifUnreadCount = 0;
+    updateNotifBadge();
+    loadRecentNotifications();
+  }
+}
+
+// Close panel when clicking outside it
+document.addEventListener("click", (e) => {
+  const panel = document.getElementById("notif-panel");
+  const btn = document.getElementById("notif-bell-btn");
+  if (!panel || panel.style.display === "none") return;
+  if (!panel.contains(e.target) && !btn.contains(e.target)) {
+    panel.style.display = "none";
+  }
+});
+
+async function loadRecentNotifications() {
+  const listEl = document.getElementById("notif-panel-list");
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="padding:14px; color:var(--muted,#888); font-size:0.9rem;">Loading…</div>';
+
+  try {
+    const snap = await fstore
+      .collection("notifications")
+      .orderBy("createdAt", "desc")
+      .limit(20)
+      .get();
+
+    if (snap.empty) {
+      listEl.innerHTML = '<div style="padding:14px; color:var(--muted,#888); font-size:0.9rem;">No recent sign-ups yet.</div>';
+      return;
+    }
+
+    listEl.innerHTML = snap.docs
+      .map((doc) => {
+        const d = doc.data();
+        const email = d.email || "Unknown email";
+        const when = d.createdAt?.toDate
+          ? d.createdAt.toDate().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+          : "";
+        return `
+          <div style="padding:10px 14px; border-bottom:1px solid var(--border,#eef0f5); font-size:0.88rem;">
+            <div style="font-weight:600;">${email}</div>
+            <div style="color:var(--muted,#888); font-size:0.78rem; margin-top:2px;">${when}</div>
+          </div>
+        `;
+      })
+      .join("");
+  } catch (err) {
+    console.error("[Notif Panel] Failed to load recent notifications:", err);
+    listEl.innerHTML = '<div style="padding:14px; color:#ff4d4f; font-size:0.85rem;">Failed to load. Check console.</div>';
+  }
+}
+
+// Kick both off once the admin's auth state is ready.
+setupAdminPushNotifications();
+startInAppNotificationListener();
+loadRecentNotifications(); // pre-fill the panel so it's ready before first click
+
+// State
+let rtdbData     = null;
+let fsData       = {};
+let authUsers    = [];
+// Access control now lives entirely in the red warning overlay (see bottom
+// of <body>), not here — this just sends normal headers.
+function adminHeaders(extra) {
+  return Object.assign({}, extra || {});
+}
+let selectedColl = null;
+let fsAllCollections = [];
+
+// ══ Status ══
+const dbStatus = document.getElementById('db-status');
+auth.onAuthStateChanged(u => {
+  document.getElementById('auth-current').textContent = u ? (u.email || u.uid) : 'Not signed in';
+});
+
+// ══════════════════════════════════
+// AUTO SIGN-IN (anonymous)
+// Most Firebase projects ship with rules like ".read": "auth != null".
+// Without ANY signed-in user, every read below fails silently with
+// "permission-denied" and the UI is left stuck on "…" / "–".
+// Signing in anonymously satisfies that rule (if the "Anonymous" provider
+// is enabled in Firebase Console → Authentication → Sign-in method).
+// ══════════════════════════════════
+let authReady;
+function ensureAuth() {
+  if (authReady) return authReady;
+  authReady = new Promise(resolve => {
+    if (auth.currentUser) { resolve(auth.currentUser); return; }
+    auth.signInAnonymously()
+      .then(cred => { console.log('[Auth] Signed in anonymously:', cred.user.uid); resolve(cred.user); })
+      .catch(err => {
+        console.error('[Auth] Anonymous sign-in failed:', err.code, err.message);
+        dbStatus.textContent = '● Auth Error: ' + err.code;
+        dbStatus.style.color = 'var(--danger)';
+        if (err.code === 'auth/admin-restricted-operation' || err.code === 'auth/operation-not-allowed') {
+          dbStatus.title = 'Firebase Console → Authentication → Sign-in method → enable "Anonymous" provider.';
+        }
+        resolve(null); // resolve anyway so reads attempt (and surface their own real error)
+      });
+  });
+  return authReady;
+}
+
+// ══════════════════════════════════
+// LIVE ONLINE USERS (Presence)
+// ══════════════════════════════════
+async function initLivePresence() {
+  await ensureAuth();
+
+  const countEl = document.getElementById('live-online-count');
+  // Show 0 immediately instead of leaving "…" forever if nothing is found below
+  countEl.textContent = '0';
+
+  // Listen to presence node in RTDB — works if users write to /presence/{uid}
+  // Try multiple common presence paths
+  const presencePaths = ['presence', 'online_users', 'sessions', 'connected_users'];
+
+  function updateOnlineCount(count) {
+    countEl.textContent = count > 0 ? count : '0';
+    countEl.style.color = '#00d2a0';
+    countEl.title = '';
+  }
+  function showLiveError(reason) {
+    countEl.textContent = '⚠';
+    countEl.style.color = 'var(--danger)';
+    countEl.title = reason;
+  }
+
+  // Try each known presence path
+  let foundPresence = false;
+  presencePaths.forEach(path => {
+    db.ref('/' + path).on('value', snap => {
+      const val = snap.val();
+      if (val && typeof val === 'object') {
+        // Count only entries that have online:true or status:'online'
+        const entries = Object.values(val);
+        const onlineCount = entries.filter(u =>
+          u === true || u?.online === true || u?.status === 'online' || u?.state === 'online'
+        ).length;
+        foundPresence = true;
+        updateOnlineCount(onlineCount);
+      }
+    }, err => {
+      console.error('[Presence] /' + path + ' read failed:', err.code, err.message);
+      if (err.code === 'PERMISSION_DENIED') showLiveError('Permission denied reading /' + path + ' — check Realtime Database rules.');
+    });
+  });
+
+  // Fallback: .info/connected gives THIS client's connection status
+  // Count via RTDB connections node if presence paths fail
+  db.ref('.info/connected').on('value', snap => {
+    if (snap.val() === true) {
+      dbStatus.textContent = '● Connected';
+      dbStatus.style.color = 'var(--accent3)';
+      if (!foundPresence) {
+        // Try counting from users with lastSeen within 5 min as "online"
+        db.ref('/users').once('value').then(uSnap => {
+          const uVal = uSnap.val();
+          if (uVal && typeof uVal === 'object') {
+            const now = Date.now();
+            const fiveMins = 5 * 60 * 1000;
+            const recentlyActive = Object.values(uVal).filter(u =>
+              u?.lastSeen && (now - u.lastSeen) < fiveMins
+            ).length;
+            updateOnlineCount(recentlyActive);
+          }
+        }).catch(err => {
+          console.error('[Presence] /users read failed:', err.code, err.message);
+          if (err.code === 'PERMISSION_DENIED') showLiveError('Permission denied reading /users — check Realtime Database rules.');
+        });
+      }
+    } else {
+      dbStatus.textContent = '● Offline';
+      dbStatus.style.color = 'var(--danger)';
+    }
+  });
+}
+
+// ══════════════════════════════════
+// TOTAL CREATED IDs COUNT
+// ══════════════════════════════════
+async function loadTotalIds() {
+  await ensureAuth();
+  const el = document.getElementById('live-total-ids');
+  let total = 0;
+  let anySuccess = false;
+  let lastErr = null;
+
+  // Check multiple common user paths in RTDB
+  const rtdbPaths = ['users', 'students', 'teachers', 'members', 'accounts', 'staff', 'auth_users'];
+  const seenUids = new Set();
+
+  for (const path of rtdbPaths) {
+    try {
+      const snap = await db.ref('/' + path).once('value');
+      anySuccess = true;
+      const val = snap.val();
+      if (val && typeof val === 'object') {
+        Object.keys(val).forEach(uid => seenUids.add(uid));
+      }
+    } catch(e) { lastErr = e; console.error('[TotalIDs] /'+path+' failed:', e.code||e.message); }
+  }
+
+  // Check Firestore collections too
+  const fsPaths = ['users', 'students', 'teachers', 'members', 'accounts'];
+  for (const coll of fsPaths) {
+    try {
+      const snap = await fstore.collection(coll).get();
+      anySuccess = true;
+      snap.docs.forEach(d => seenUids.add(d.id));
+    } catch(e) { lastErr = e; console.error('[TotalIDs] Firestore/'+coll+' failed:', e.code||e.message); }
+  }
+
+  total = seenUids.size;
+
+  if (!anySuccess && lastErr) {
+    el.textContent = '⚠';
+    el.style.color = 'var(--danger)';
+    el.title = 'Read failed: ' + (lastErr.code || lastErr.message) + ' — check Realtime DB / Firestore rules and confirm path names (users/students/etc.) actually exist.';
+  } else {
+    el.textContent = total; // show 0 honestly instead of "–" when paths exist but are empty
+    el.style.color = 'var(--accent)';
+    el.title = '';
+  }
+
+  // Also update auth-db-count if on auth tab
+  const authCount = document.getElementById('auth-db-count');
+  if (authCount && authCount.textContent === '–') {
+    authCount.textContent = total;
+  }
+}
+
+// Init live features on load
+initLivePresence();
+loadTotalIds();
+
+// Refresh total IDs every 30 seconds
+setInterval(loadTotalIds, 30000);
+
+// ══════════════════════════════════
+// COMPARE: RTDB vs Firestore vs Auth
+// ══════════════════════════════════
+const CMP_RTDB_PATHS = ['students','users','members','accounts','teachers','staff','auth_users'];
+const CMP_FS_COLLS    = ['students','users','members','accounts','teachers','staff'];
+
+// Pull a PRN-like field out of a record, case-insensitively (prn, PRN, Prn, studentPRN, prn_no, etc.)
+// Normalized to trimmed-uppercase so "abc123" and "ABC123" count as the same student.
+function extractPRN(rec) {
+  if (!rec || typeof rec !== 'object') return null;
+  for (const [k, v] of Object.entries(rec)) {
+    if (/prn/i.test(k) && v !== null && v !== undefined && String(v).trim() !== '') {
+      return String(v).trim().toUpperCase();
+    }
+  }
+  return null;
+}
+
+async function loadCompareData() {
+  log('cmp','<span class="log-info">● Server से data ला कर compare कर रहे हैं…</span>');
+  document.getElementById('cmp-table-body').innerHTML = '<tr><td colspan="3" style="padding:10px;color:var(--muted);"><span class="spinner"></span> Loading…</td></tr>';
+
+  try {
+    if (!window._exportCache) {
+      const res = await fetch('/api/export-data', { headers: adminHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      window._exportCache = data;
+    }
+  } catch(e) {
+    log('cmp','<span class="log-err">✗ '+e.message+'</span>');
+    return;
+  }
+
+  const cache = window._exportCache;
+  const rows = [];
+  const rtdbPRNs = new Set();
+  const fsPRNs = new Set();
+  let missingPRN = 0;
+
+  // 1) Realtime Database
+  for (const path of CMP_RTDB_PATHS) {
+    const val = cache.rtdb ? cache.rtdb[path] : null;
+    let recordCount = 0, foundHere = 0;
+    if (val && typeof val === 'object') {
+      Object.values(val).forEach(rec => {
+        recordCount++;
+        const prn = extractPRN(rec);
+        if (prn) { rtdbPRNs.add(prn); foundHere++; }
+        else missingPRN++;
+      });
+    }
+    rows.push({source:'🗄️ Realtime Database', path:'/'+path, count: recordCount ? (foundHere+' PRN / '+recordCount+' records') : 0});
+  }
+
+  // 2) Firestore
+  for (const coll of CMP_FS_COLLS) {
+    const docs = cache.firestore ? (cache.firestore[coll] || []) : [];
+    let foundHere = 0;
+    docs.forEach(d => {
+      const prn = extractPRN(d);
+      if (prn) { fsPRNs.add(prn); foundHere++; }
+      else missingPRN++;
+    });
+    rows.push({source:'📋 Firestore', path:coll, count: docs.length ? (foundHere+' PRN / '+docs.length+' docs') : 0});
+  }
+
+  // 3) Authentication — real count now, via Admin SDK
+  const authCount = (cache.authUsers || []).length;
+  rows.push({source:'🔐 Authentication', path:'Firebase Auth (Admin SDK)', count: authCount});
+
+  const unionPRNs = new Set([...rtdbPRNs, ...fsPRNs]);
+  rows.push({source:'🔐 Authentication', path:'derived PRN (from DB records)', count: unionPRNs.size});
+
+  const liveText = document.getElementById('live-online-count').textContent;
+  const liveCount = /^\d+$/.test(liveText) ? liveText : '0';
+
+  document.getElementById('cmp-live').textContent  = liveCount;
+  document.getElementById('cmp-rtdb').textContent  = rtdbPRNs.size;
+  document.getElementById('cmp-fs').textContent    = fsPRNs.size;
+  document.getElementById('cmp-auth').textContent  = unionPRNs.size;
+  document.getElementById('cmp-total').textContent = unionPRNs.size;
+
+  document.getElementById('cmp-table-body').innerHTML = rows.map(r => `
+    <tr>
+      <td style="padding:10px 12px;">${r.source}</td>
+      <td style="padding:10px 12px;font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:0.78rem;">${r.path}</td>
+      <td style="padding:10px 12px;font-weight:600;${r.count==='⚠ denied'?'color:var(--danger);':''}">${r.count}</td>
+    </tr>
+  `).join('') + `
+    <tr style="border-top:2px solid var(--accent2);background:rgba(124,92,252,0.05);">
+      <td style="padding:10px 12px;font-weight:700;color:var(--accent2);" colspan="2">TOTAL UNIQUE PRN (RTDB ∪ Firestore)</td>
+      <td style="padding:10px 12px;font-weight:800;color:var(--accent2);font-size:1rem;">${unionPRNs.size}</td>
+    </tr>`;
+
+  const missingNote = missingPRN ? (' — ⚠ '+missingPRN+' records में PRN field नहीं मिला (इन्हें count नहीं किया गया)') : '';
+  log('cmp','<span class="log-ok">✓ Compare पूरा हुआ — RTDB unique PRN: '+rtdbPRNs.size+', Firestore unique PRN: '+fsPRNs.size+', Total Unique PRN: '+unionPRNs.size+'</span>'+missingNote);
+}
+
+// Auto-refresh compare data every 30s alongside the totals
+setInterval(() => { if (document.getElementById('panel-compare').classList.contains('active')) loadCompareData(); }, 30000);
+
+// ══ Tab Switch ══
+function switchTab(tab) {
+  ['rtdb','firestore','auth','compare','edit','danger'].forEach(t => {
+    document.getElementById('panel-'+t).classList.toggle('active', t===tab);
+  });
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['rtdb','firestore','auth','compare','edit','danger'][i]===tab);
+  });
+  if (tab === 'compare') loadCompareData();
+  if (tab === 'danger') loadDangerUsers();
+}
+
+// ══════════════════════════════════
+// RTDB
+// ══════════════════════════════════
+async function loadRTDB() {
+  log('rtdb','<span class="log-info">● Server से Realtime DB fetch कर रहे हैं…</span>');
+  document.getElementById('rtdb-preview').textContent = 'Loading…';
+  document.getElementById('rtdb-pdf-btn').disabled = true;
+  document.getElementById('rtdb-status-txt').textContent = 'Loading…';
+  try {
+    const res = await fetch('/api/export-data', { headers: adminHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    rtdbData = data.rtdb;
+    window._exportCache = data; // reused by Firestore/Auth/Compare loaders below
+
+    if (!rtdbData) {
+      log('rtdb','<span class="log-err">✗ Database खाली है</span>');
+      document.getElementById('rtdb-preview').textContent = 'Database खाली है।';
+      document.getElementById('rtdb-status-txt').textContent = '✗ No Data';
+      return;
+    }
+    const str = JSON.stringify(rtdbData, null, 2);
+    document.getElementById('rtdb-preview').textContent = str;
+    document.getElementById('rtdb-count').textContent = countLeaves(rtdbData);
+    document.getElementById('rtdb-size').textContent = formatBytes(str.length);
+    document.getElementById('rtdb-status-txt').textContent = '✓ Loaded (' + Object.keys(rtdbData).length + ' root keys)';
+    document.getElementById('rtdb-pdf-btn').disabled = false;
+    dbStatus.textContent = '● Connected (server-side)';
+    dbStatus.style.color = 'var(--accent3)';
+    log('rtdb','<span class="log-ok">✓ Data load हो गया। ' + Object.keys(rtdbData).length + ' root keys मिलीं।</span>');
+  } catch(e) {
+    log('rtdb','<span class="log-err">✗ Error: '+e.message+'</span>');
+    document.getElementById('rtdb-preview').textContent = '❌ Error: ' + e.message;
+    document.getElementById('rtdb-status-txt').textContent = '✗ Error';
+    dbStatus.textContent = '● Error: ' + e.message;
+    dbStatus.style.color = 'var(--danger)';
+  }
+}
+loadRTDB();
+
+function countLeaves(obj, n=0) {
+  if (typeof obj !== 'object' || obj===null) return n+1;
+  for(const k of Object.keys(obj)) n = countLeaves(obj[k], n);
+  return n;
+}
+function formatBytes(n) {
+  if(n<1024) return n+'B';
+  if(n<1024*1024) return (n/1024).toFixed(1)+'KB';
+  return (n/1024/1024).toFixed(2)+'MB';
+}
+
+// ══════════════════════════════════
+// FIRESTORE
+// ══════════════════════════════════
+const KNOWN_COLLECTIONS = ['users','students','teachers','courses','orders','products','posts','todos','classes','subjects','marks','attendance','fees','events','notifications','settings','admins','staff','library','books','members','exams','results','departments','branches'];
+
+async function loadFirestore() {
+  log('fs','<span class="log-info">● Server से collections load कर रहे हैं…</span>');
+  const div = document.getElementById('fs-collections');
+  div.innerHTML = '<span style="color:var(--muted);font-size:0.82rem;"><span class="spinner"></span> Loading…</span>';
+  fsAllCollections = [];
+  try {
+    if (!window._exportCache) {
+      const res = await fetch('/api/export-data', { headers: adminHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      window._exportCache = data;
+    }
+    const fsAll = window._exportCache.firestore || {};
+    fsAllCollections = Object.keys(fsAll);
+    fsData = fsAll; // all collections already fetched, no extra call needed on select
+
+    if (!fsAllCollections.length) {
+      div.innerHTML = '<span style="color:var(--muted);">कोई collection नहीं मिली।</span>';
+      log('fs','<span class="log-err">✗ No collections found</span>');
+      return;
+    }
+    div.innerHTML = '';
+    fsAllCollections.forEach(c => {
+      const chip = document.createElement('button');
+      chip.className = 'coll-chip';
+      chip.textContent = c + ' (' + fsAll[c].length + ')';
+      chip.onclick = () => selectCollection(c, chip);
+      div.appendChild(chip);
+    });
+    log('fs',`<span class="log-ok">✓ ${fsAllCollections.length} collections मिलीं</span>`);
+  } catch(e) {
+    div.innerHTML = '<span style="color:var(--muted);">Error लोड करते वक्त</span>';
+    log('fs','<span class="log-err">✗ '+e.message+'</span>');
+  }
+}
+
+function selectCollection(name, chip) {
+  document.querySelectorAll('.coll-chip').forEach(c => c.classList.remove('selected'));
+  chip.classList.add('selected');
+  selectedColl = name;
+  document.getElementById('fs-stats').style.display = 'flex';
+  document.getElementById('fs-selected-name').textContent = name;
+  document.getElementById('fs-doc-count').textContent = fsData[name].length;
+  document.getElementById('fs-preview').textContent = JSON.stringify(fsData[name], null, 2);
+  document.getElementById('fs-pdf-btn').disabled = false;
+  log('fs',`<span class="log-ok">✓ ${fsData[name].length} documents (server से पहले ही load हो चुके थे)</span>`);
+}
+
+// ══════════════════════════════════
+// AUTH USERS
+// ══════════════════════════════════
+async function loadAuthUsers() {
+  log('auth','<span class="log-info">● Server से Auth users load कर रहे हैं…</span>');
+  authUsers = [];
+  const grid = document.getElementById('auth-grid');
+  const preview = document.getElementById('auth-preview');
+  grid.innerHTML = '';
+  try {
+    if (!window._exportCache) {
+      const res = await fetch('/api/export-data', { headers: adminHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      window._exportCache = data;
+    }
+    authUsers = window._exportCache.authUsers || [];
+    document.getElementById('auth-db-count').textContent = authUsers.length;
+    if(!authUsers.length) {
+      preview.textContent = 'कोई Auth users नहीं मिले।';
+      log('auth','<span class="log-err">✗ No auth users found</span>');
+      return;
+    }
+    grid.innerHTML = '';
+    authUsers.slice(0,12).forEach(u => {
+      const card = document.createElement('div');
+      card.className = 'auth-card';
+      card.innerHTML = `
+        <div class="uid">UID: ${u.uid||'–'}</div>
+        <div class="email">${u.email||u.name||'Unknown'}</div>
+        <div class="provider">${u.phone||''}</div>
+      `;
+      grid.appendChild(card);
+    });
+    preview.textContent = JSON.stringify(authUsers, null, 2);
+    document.getElementById('auth-pdf-btn').disabled = false;
+    log('auth',`<span class="log-ok">✓ ${authUsers.length} users मिले (Firebase Auth, Admin SDK से)</span>`);
+  } catch(e) {
+    preview.textContent = 'Error: ' + e.message;
+    log('auth','<span class="log-err">✗ '+e.message+'</span>');
+  }
+}
+
+// ══════════════════════════════════
+// PDF GENERATION
+// ══════════════════════════════════
+function flattenObj(obj, prefix='') {
+  const out = {};
+  for(const [k,v] of Object.entries(obj||{})) {
+    const key = prefix ? prefix+'.'+k : k;
+    if(v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flattenObj(v, key));
+    else out[key] = Array.isArray(v) ? JSON.stringify(v) : String(v??'');
+  }
+  return out;
+}
+
+// Renders arbitrarily-wide row data as a sequence of stacked tables, each with
+// the anchor column (key/id) + a chunk of other columns. This guarantees every
+// field is printed — no matter how many columns exist — instead of squeezing
+// everything into one unreadable table or silently dropping extra columns.
+function renderChunkedTable(doc, anchorCol, otherCols, rows, startY, headStyles, altColor, chunkSize=9) {
+  let y = startY;
+  const chunks = [];
+  for (let i = 0; i < otherCols.length; i += chunkSize) chunks.push(otherCols.slice(i, i + chunkSize));
+  if (chunks.length === 0) chunks.push([]);
+  chunks.forEach((chunk, idx) => {
+    if (y > 270) { doc.addPage(); y = 20; }
+    const headers = [anchorCol, ...chunk];
+    doc.autoTable({
+      startY: y,
+      head: [headers],
+      body: rows.map(r => headers.map(h => String(r[h] ?? ''))),
+      styles: { fontSize: 6, cellPadding: 1.5, overflow: 'linebreak' },
+      headStyles: headStyles,
+      alternateRowStyles: { fillColor: altColor },
+      margin: { left: 14, right: 14 },
+      didDrawPage: data => { y = data.cursor.y; },
+    });
+    y = doc.lastAutoTable.finalY + (idx < chunks.length - 1 ? 6 : 10);
+  });
+  return y;
+}
+
+function makePdfBase(title, subtitle) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+
+  // Header gradient-like bar
+  doc.setFillColor(15,21,36);
+  doc.rect(0,0,210,32,'F');
+  doc.setFillColor(79,142,247);
+  doc.rect(0,0,6,32,'F');
+
+  doc.setTextColor(232,236,244);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(16);
+  doc.text(title, 14, 14);
+  doc.setFontSize(9); doc.setFont('helvetica','normal');
+  doc.setTextColor(107,122,153);
+  doc.text(subtitle, 14, 22);
+  doc.text('Generated: '+new Date().toLocaleString('hi-IN'), 14, 28);
+  doc.text('Firebase Project: students-e5183', 130, 22);
+
+  return { doc, startY: 38 };
+}
+
+function addFooter(doc) {
+  const pages = doc.internal.getNumberOfPages();
+  for(let i=1;i<=pages;i++){
+    doc.setPage(i);
+    doc.setFontSize(7); doc.setTextColor(107,122,153);
+    doc.text(`Page ${i} of ${pages} · Firebase PDF Maker · students-e5183`, 14, 290);
+    doc.setDrawColor(30,42,66); doc.setLineWidth(0.3);
+    doc.line(14,287,196,287);
+  }
+}
+
+// ── RTDB PDF ──
+function generateRTDBPdf() {
+  if(!rtdbData) {
+    log('rtdb','<span class="log-err">✗ पहले data load करें (↻ Reload Data button दबाएँ)</span>');
+    return;
+  }
+  if(typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+    log('rtdb','<span class="log-err">✗ jsPDF library load नहीं हुई। Page refresh करें।</span>');
+    return;
+  }
+  const format = document.getElementById('rtdb-format').value;
+  log('rtdb','<span class="log-info">● PDF बना रहे हैं ('+format+')…</span>');
+  const btn = document.getElementById('rtdb-pdf-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating…';
+
+  setTimeout(() => {
+    try {
+      const { doc, startY } = makePdfBase('🗄️ Realtime Database Export', 'Firebase Realtime Database — Full Snapshot');
+
+      if(format === 'json') {
+        doc.setFont('courier','normal'); doc.setFontSize(7); doc.setTextColor(50,80,140);
+        const lines = JSON.stringify(rtdbData, null, 2).split('\n');
+        let y = startY;
+        lines.forEach(line => {
+          if(y > 280) { doc.addPage(); y = 20; }
+          doc.text(line, 14, y); y += 4.2;
+        });
+      } else if(format === 'list') {
+        let y = startY;
+        doc.setFontSize(9);
+        renderList(doc, rtdbData, '', y, []);
+      } else {
+        // TABLE — flatten all top-level keys as rows
+        const rows = [];
+        const cols = new Set(['key','value']);
+        function walk(obj, prefix) {
+          if(!obj || typeof obj !== 'object') return;
+          Object.entries(obj).forEach(([k,v]) => {
+            const fullKey = prefix ? prefix+'/'+k : k;
+            if(v && typeof v === 'object') {
+              const flat = flattenObj(v);
+              Object.keys(flat).forEach(fk => cols.add(fk));
+              rows.push({key: fullKey, ...flat});
+            } else {
+              rows.push({key: fullKey, value: String(v??'')});
+            }
+          });
+        }
+        walk(rtdbData, '');
+        const otherCols = Array.from(cols).filter(c=>c!=='key');
+        renderChunkedTable(doc, 'key', otherCols, rows, startY,
+          {fillColor:[79,142,247], textColor:255, fontStyle:'bold'}, [240,243,255]);
+      }
+
+      addFooter(doc);
+      doc.save('rtdb-export-'+Date.now()+'.pdf');
+      log('rtdb','<span class="log-ok">✓ PDF download हो रही है!</span>');
+    } catch(e) {
+      log('rtdb','<span class="log-err">✗ PDF Error: '+e.message+'</span>');
+    }
+    btn.disabled = false; btn.innerHTML = '📄 Generate PDF';
+  }, 100);
+}
+
+let listY = 20;
+function renderList(doc, obj, prefix, y, _) {
+  listY = y;
+  function walk(o, indent) {
+    if(!o || typeof o !== 'object') return;
+    Object.entries(o).forEach(([k,v]) => {
+      if(listY > 280) { doc.addPage(); listY = 20; }
+      if(v && typeof v === 'object') {
+        doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(79,142,247);
+        doc.text('  '.repeat(indent)+'▸ '+k, 14, listY); listY += 5;
+        walk(v, indent+1);
+      } else {
+        doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(60,60,80);
+        const txt = '  '.repeat(indent)+'• '+k+': '+String(v??'').slice(0,80);
+        doc.text(txt, 14, listY); listY += 4.5;
+      }
+    });
+  }
+  walk(obj, 0);
+}
+
+// ── FIRESTORE PDF ──
+async function generateFirestorePdf() {
+  const all = document.getElementById('fs-all').checked;
+  const format = document.getElementById('fs-format').value;
+  const btn = document.getElementById('fs-pdf-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating…';
+
+  let dataMap = {};
+  if(all) {
+    log('fs','<span class="log-info">● सभी collections load हो रही हैं…</span>');
+    for(const c of fsAllCollections) {
+      if(fsData[c]) { dataMap[c] = fsData[c]; continue; }
+      try {
+        const snap = await fstore.collection(c).get();
+        dataMap[c] = snap.docs.map(d=>({id:d.id,...d.data()}));
+      } catch(e) {}
+    }
+  } else {
+    if(!selectedColl||!fsData[selectedColl]) { log('fs','<span class="log-err">✗ पहले collection select करें</span>'); btn.disabled=false; btn.innerHTML='📄 Generate PDF'; return; }
+    dataMap[selectedColl] = fsData[selectedColl];
+  }
+
+  setTimeout(() => {
+    try {
+      const collNames = Object.keys(dataMap);
+      const { doc, startY } = makePdfBase('📋 Firestore Export', 'Collections: '+collNames.join(', '));
+      let curY = startY;
+
+      collNames.forEach(cName => {
+        const docs = dataMap[cName];
+        if(!docs||!docs.length) return;
+        // Section title
+        if(curY > 260) { doc.addPage(); curY = 20; }
+        doc.setFillColor(15,21,60);
+        doc.rect(14, curY, 182, 8, 'F');
+        doc.setTextColor(124,92,252); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+        doc.text('📋 Collection: '+cName+' ('+docs.length+' docs)', 17, curY+5.5);
+        curY += 12;
+
+        if(format === 'json') {
+          doc.setFont('courier','normal'); doc.setFontSize(6.5); doc.setTextColor(40,60,120);
+          const lines = JSON.stringify(docs, null, 2).split('\n');
+          lines.forEach(line => {
+            if(curY>280){doc.addPage();curY=20;}
+            doc.text(line.slice(0,110), 14, curY); curY+=4;
+          });
+        } else if(format === 'cards') {
+          docs.forEach((d,i) => {
+            if(curY>260){doc.addPage();curY=20;}
+            doc.setFillColor(245,246,255);
+            const flat = flattenObj(d);
+            const keys = Object.keys(flat);
+            const cardH = keys.length*4.6+12;
+            if(curY+cardH>280){doc.addPage();curY=20;}
+            doc.rect(14,curY,182,cardH,'F');
+            doc.setDrawColor(200,200,240); doc.rect(14,curY,182,cardH);
+            doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(79,142,247);
+            doc.text('Doc #'+(i+1)+' — '+String(d.id||''), 17, curY+6);
+            doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(60,70,90);
+            let ly = curY+11;
+            keys.forEach(k => {
+              doc.text(k+': '+String(flat[k]??''), 17, ly); ly+=4.6;
+            });
+            curY += cardH+4;
+          });
+        } else {
+          // Table
+          const allKeys = new Set();
+          const rows = docs.map(d => { const f=flattenObj(d); return { id: d.id, ...f }; });
+          rows.forEach(r => Object.keys(r).forEach(k=>{ if(k!=='id') allKeys.add(k); }));
+          curY = renderChunkedTable(doc, 'id', Array.from(allKeys), rows, curY,
+            {fillColor:[124,92,252], textColor:255}, [248,246,255]);
+        }
+        curY += 6;
+      });
+
+      addFooter(doc);
+      doc.save('firestore-export-'+Date.now()+'.pdf');
+      log('fs','<span class="log-ok">✓ PDF download हो रही है!</span>');
+    } catch(e) {
+      log('fs','<span class="log-err">✗ PDF Error: '+e.message+'</span>');
+    }
+    btn.disabled=false; btn.innerHTML='📄 Generate PDF';
+  }, 100);
+}
+
+// ── AUTH PDF ──
+function generateAuthPdf() {
+  if(!authUsers.length) return;
+  const format = document.getElementById('auth-format').value;
+  const btn = document.getElementById('auth-pdf-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Generating…';
+  setTimeout(() => {
+    try {
+      const { doc, startY } = makePdfBase('🔐 Authentication Users Export', 'Firebase Auth — User Records (from DB)');
+      const curUser = auth.currentUser;
+      if(curUser) {
+        doc.setFontSize(8); doc.setTextColor(60,80,130);
+        doc.text('Current Signed-In: '+(curUser.email||curUser.uid), 14, startY);
+      }
+      const y = curUser ? startY+8 : startY;
+
+      if(format === 'detailed') {
+        let cy = y;
+        authUsers.forEach((u,i) => {
+          if(cy>260){doc.addPage();cy=20;}
+          doc.setFillColor(240,255,250);
+          const keys = Object.keys(u).filter(k=>k!=='_source');
+          const h = keys.length*4.6+14;
+          if(cy+h>280){doc.addPage();cy=20;}
+          doc.rect(14,cy,182,h,'F');
+          doc.setDrawColor(0,200,160); doc.rect(14,cy,182,h);
+          doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0,140,110);
+          doc.text('User #'+(i+1)+(u.email?' — '+u.email:''), 17, cy+7);
+          doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(40,60,60);
+          let ly=cy+13;
+          keys.forEach(k=>{
+            doc.text(k+': '+String(u[k]??''), 17, ly);ly+=4.6;
+          });
+          cy+=h+5;
+        });
+      } else {
+        const allKeys = new Set();
+        authUsers.forEach(u=>Object.keys(u).forEach(k=>{ if(k!=='_source' && k!=='uid') allKeys.add(k); }));
+        renderChunkedTable(doc, 'uid', Array.from(allKeys), authUsers, y,
+          {fillColor:[0,180,140], textColor:255, fontStyle:'bold'}, [240,255,250]);
+      }
+
+      addFooter(doc);
+      doc.save('auth-users-'+Date.now()+'.pdf');
+      log('auth','<span class="log-ok">✓ Auth PDF download हो रही है!</span>');
+    } catch(e) {
+      log('auth','<span class="log-err">✗ PDF Error: '+e.message+'</span>');
+    }
+    btn.disabled=false; btn.innerHTML='📄 Generate Auth PDF';
+  },100);
+}
+
+// ══ Theme Toggle ══
+function setTheme(mode) {
+  if (mode === 'dark') {
+    document.body.classList.add('dark-mode');
+    document.getElementById('btn-dark').classList.add('active');
+    document.getElementById('btn-light').classList.remove('active');
+    localStorage.setItem('fbpdf-theme', 'dark');
+  } else {
+    document.body.classList.remove('dark-mode');
+    document.getElementById('btn-light').classList.add('active');
+    document.getElementById('btn-dark').classList.remove('active');
+    localStorage.setItem('fbpdf-theme', 'light');
+  }
+}
+// Apply saved theme on load
+(function() {
+  const saved = localStorage.getItem('fbpdf-theme');
+  if (saved === 'dark') setTheme('dark');
+})();
+
+// ══ Log helper ══
+function log(panel, msg) {
+  const box = document.getElementById(panel+'-log');
+  box.innerHTML += msg + '<br>';
+  box.scrollTop = box.scrollHeight;
+}
+
+// ══════════════════════════════════
+// (Admin gate overlay removed — dashboard now opens directly)
+// ══════════════════════════════════
+
+// ══════════════════════════════════
+// DANGER ZONE — server-side deletes via /api (Admin SDK)
+// ══════════════════════════════════
+async function loadDangerUsers() {
+  const listEl = document.getElementById('danger-user-list');
+  listEl.innerHTML = '<span style="color:var(--muted);font-size:0.82rem;">Loading…</span>';
+
+  try {
+    const res = await fetch('/api/list-users', { headers: adminHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+
+    const source = document.getElementById('danger-source').value;
+    const rows = source === 'rtdb' ? data.rtdb.map(u => ({ key: u.key, label: u.prn || u.name || u.key }))
+      : source === 'firestore' ? data.firestore.map(u => ({ key: u.id, label: u.prn || u.name || u.id }))
+      : data.auth.map(u => ({ key: u.uid, label: u.email || u.phone || u.uid }));
+
+    listEl.innerHTML = '';
+    if (!rows.length) { listEl.innerHTML = '<span style="color:var(--muted);font-size:0.82rem;">कोई users नहीं मिले</span>'; return; }
+
+    rows.forEach(r => {
+      const div = document.createElement('div');
+      div.className = 'user-row';
+      div.innerHTML = '<span>'+r.label+'</span>';
+      const btn = document.createElement('button');
+      btn.textContent = 'Delete';
+      btn.onclick = () => deleteOneUser(source, r.key, r.label);
+      div.appendChild(btn);
+      listEl.appendChild(div);
+    });
+    log('danger','<span class="log-ok">✓ '+rows.length+' users loaded ('+source+')</span>');
+  } catch (e) {
+    log('danger','<span class="log-err">✗ '+e.message+'</span>');
+  }
+}
+
+async function deleteOneUser(source, key, label) {
+  if (!confirm('पक्का "'+label+'" को '+source+' से delete करना है? यह undo नहीं होगा।')) return;
+
+  try {
+    const res = await fetch('/api/delete-user', {
+      method: 'POST',
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ source, key })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    log('danger','<span class="log-ok">✓ "'+label+'" delete हो गया</span>');
+    loadDangerUsers();
+  } catch (e) {
+    log('danger','<span class="log-err">✗ '+e.message+'</span>');
+  }
+}
+
+async function wipeSource(source) {
+  const labels = { rtdb: 'Realtime Database', auth: 'Authentication', firestore: 'Firestore' };
+  const phrase = 'WIPE ' + source.toUpperCase();
+  const typed = prompt('यह पूरा "'+labels[source]+'" data हमेशा के लिए मिटा देगा।\nConfirm करने के लिए ठीक यह टाइप करें: '+phrase);
+  if (typed !== phrase) { log('danger','<span class="log-info">● Cancelled</span>'); return; }
+
+  try {
+    const res = await fetch('/api/wipe-source', {
+      method: 'POST',
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ source, confirm: phrase })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    log('danger','<span class="log-ok">✓ '+labels[source]+' पूरी तरह wipe हो गई</span>');
+    loadDangerUsers();
+  } catch (e) {
+    log('danger','<span class="log-err">✗ '+e.message+'</span>');
+  }
+}
+
+async function confirmDeleteAll() {
+  const typed = prompt('यह RTDB + Firestore + Auth का पूरा data हमेशा के लिए मिटा देगा।\nConfirm करने के लिए ठीक यह टाइप करें: DELETE ALL');
+  if (typed !== 'DELETE ALL') { log('danger','<span class="log-info">● Cancelled</span>'); return; }
+
+  const btn = document.getElementById('danger-delete-all-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Wiping…';
+
+  try {
+    const res = await fetch('/api/delete-all', {
+      method: 'POST',
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ confirm: 'DELETE ALL' })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    log('danger','<span class="log-ok">✓ सब कुछ wipe हो गया (Auth deleted: '+data.deletedAuth+')</span>');
+    loadDangerUsers();
+  } catch (e) {
+    log('danger','<span class="log-err">✗ '+e.message+'</span>');
+  }
+  btn.disabled = false; btn.innerHTML = '💣 Delete ALL Data (RTDB + Firestore + Auth)';
+}
+
+// ══════════════════════════════════
+// GLOBAL SEARCH — across RTDB, Firestore, Auth
+// ══════════════════════════════════
+function logEl(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
+
+async function ensureExportCache() {
+  if (window._exportCache) return window._exportCache;
+  const res = await fetch('/api/export-data', { headers: adminHeaders() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch data');
+  window._exportCache = data;
+  rtdbData = data.rtdb;
+  return data;
+}
+
+function matchesQuery(obj, q) {
+  const s = JSON.stringify(obj).toLowerCase();
+  return s.includes(q);
+}
+
+async function runGlobalSearch() {
+  const qRaw = document.getElementById('global-search-input').value.trim();
+  const resultsEl = document.getElementById('global-search-results');
+  if (!qRaw) { resultsEl.innerHTML = ''; return; }
+  const q = qRaw.toLowerCase();
+
+  resultsEl.innerHTML = '<span class="spinner"></span> Search हो रही है…';
+  try {
+    const data = await ensureExportCache();
+    const matches = [];
+
+    // RTDB — search top-level nodes under users/ (and any other top-level trees)
+    const rtdb = data.rtdb || {};
+    Object.keys(rtdb).forEach(topKey => {
+      const branch = rtdb[topKey];
+      if (branch && typeof branch === 'object') {
+        Object.entries(branch).forEach(([id, val]) => {
+          if (matchesQuery({ id, ...val }, q)) {
+            matches.push({ type: 'rtdb', path: topKey + '/' + id, id, data: val });
+          }
+        });
+      }
+    });
+
+    // Firestore — search every collection's docs
+    const fs = data.firestore || {};
+    Object.keys(fs).forEach(coll => {
+      (fs[coll] || []).forEach(doc => {
+        if (matchesQuery(doc, q)) {
+          matches.push({ type: 'firestore', path: coll + '/' + doc.id, id: doc.id, data: doc });
+        }
+      });
+    });
+
+    // Auth users
+    (data.authUsers || []).forEach(u => {
+      if (matchesQuery(u, q)) {
+        matches.push({ type: 'auth', path: u.uid, id: u.uid, data: u });
+      }
+    });
+
+    if (matches.length === 0) {
+      resultsEl.innerHTML = '<div style="color:var(--muted);padding:8px 0;">कोई match नहीं मिला।</div>';
+      return;
+    }
+
+    resultsEl.innerHTML = matches.slice(0, 40).map(m => {
+      const flat = flattenObj(m.data);
+      const rows = Object.keys(flat).map(k =>
+        '<div style="display:flex;gap:6px;font-size:0.8rem;padding:2px 0;">' +
+        '<span style="color:var(--muted);min-width:120px;">' + escapeHtml(k) + '</span>' +
+        '<span style="color:var(--text);word-break:break-all;">' + escapeHtml(String(flat[k])) + '</span></div>'
+      ).join('');
+      const typeColor = m.type === 'rtdb' ? '#4f8ef7' : m.type === 'firestore' ? '#7c5cfc' : '#00b48c';
+      const editBtn = m.type === 'rtdb'
+        ? '<button class="btn btn-secondary" onclick="jumpToEdit(\'' + m.path.replace(/'/g,"\\'") + '\')">✏️ Edit</button>'
+        : '';
+      return '<div style="border:1.5px solid var(--border2);border-radius:12px;padding:12px 14px;margin-bottom:10px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+        '<span style="font-weight:700;color:' + typeColor + ';">' + m.type.toUpperCase() + ' — ' + escapeHtml(m.path) + '</span>' +
+        editBtn + '</div>' +
+        '<div>' + rows + '</div></div>';
+    }).join('') + (matches.length > 40 ? '<div style="color:var(--muted);">+' + (matches.length-40) + ' और results…</div>' : '');
+  } catch (e) {
+    resultsEl.innerHTML = '<span class="log-err">✗ ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+function clearGlobalSearch() {
+  document.getElementById('global-search-input').value = '';
+  document.getElementById('global-search-results').innerHTML = '';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function jumpToEdit(path) {
+  switchTab('edit');
+  document.getElementById('edit-path-input').value = path;
+  loadEditPath();
+}
+
+// ══════════════════════════════════
+// EDIT — load an RTDB path, edit fields, save back (real-time write)
+// ══════════════════════════════════
+let editCurrentPath = null;
+let editFieldSeq = 0;
+
+async function loadEditPath() {
+  const path = document.getElementById('edit-path-input').value.trim().replace(/^\/+|\/+$/g, '');
+  if (!path) { logEl('edit-log', '<span class="log-err">✗ Path डालो पहले</span>'); return; }
+
+  logEl('edit-log', '<span class="log-info"><span class="spinner"></span> Data load हो रहा है…</span>');
+  try {
+    const data = await ensureExportCache();
+    const parts = path.split('/');
+    let node = data.rtdb || {};
+    for (const p of parts) {
+      if (node && typeof node === 'object' && p in node) node = node[p];
+      else { node = null; break; }
+    }
+    if (node === null || typeof node !== 'object') {
+      logEl('edit-log', '<span class="log-err">✗ यह path RTDB में नहीं मिला (या यह कोई object नहीं है)</span>');
+      document.getElementById('edit-fields-wrap').style.display = 'none';
+      return;
+    }
+    editCurrentPath = path;
+    const flat = flattenObj(node);
+    renderEditFields(flat);
+    document.getElementById('edit-path-label').textContent = path;
+    document.getElementById('edit-fields-wrap').style.display = 'block';
+    logEl('edit-log', '<span class="log-ok">✓ Loaded — ' + Object.keys(flat).length + ' fields</span>');
+  } catch (e) {
+    logEl('edit-log', '<span class="log-err">✗ ' + escapeHtml(e.message) + '</span>');
+  }
+}
+
+function renderEditFields(flat) {
+  const list = document.getElementById('edit-fields-list');
+  editFieldSeq = 0;
+  list.innerHTML = '';
+  Object.keys(flat).forEach(k => addEditFieldRow(k, flat[k]));
+}
+
+function addEditFieldRow(key, value) {
+  const list = document.getElementById('edit-fields-list');
+  const rowId = 'edit-row-' + (editFieldSeq++);
+  const row = document.createElement('div');
+  row.id = rowId;
+  row.style = 'display:flex;gap:8px;align-items:center;';
+  row.innerHTML =
+    '<input class="edit-key-input" value="' + escapeHtml(key) + '" placeholder="field name" ' +
+      'style="width:38%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border2);background:var(--bg);color:var(--text);font-size:0.82rem;" />' +
+    '<input class="edit-val-input" value="' + escapeHtml(value === undefined || value === null ? '' : value) + '" placeholder="value" ' +
+      'style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border2);background:var(--bg);color:var(--text);font-size:0.82rem;" />' +
+    '<button class="btn btn-secondary" style="padding:6px 10px;" onclick="document.getElementById(\'' + rowId + '\').remove()">✕</button>';
+  list.appendChild(row);
+}
+
+function addEditField() { addEditFieldRow('', ''); }
+
+async function saveEditFields() {
+  if (!editCurrentPath) return;
+  const rows = Array.from(document.querySelectorAll('#edit-fields-list > div'));
+  const updates = {};
+  for (const row of rows) {
+    const k = row.querySelector('.edit-key-input').value.trim();
+    const v = row.querySelector('.edit-val-input').value;
+    if (!k) continue;
+    updates[k.replace(/\./g, '/')] = v; // dot-path -> slash-path for RTDB multi-location update
+  }
+  if (Object.keys(updates).length === 0) {
+    logEl('edit-log', '<span class="log-err">✗ Save करने के लिए कम-से-कम एक field होना चाहिए</span>');
+    return;
+  }
+  const btn = document.getElementById('edit-save-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saving…';
+  try {
+    const res = await fetch('/api/update-data', {
+      method: 'POST',
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ path: editCurrentPath, updates })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    logEl('edit-log', '<span class="log-ok">✓ Saved! Realtime Database update हो गया।</span>');
+    window._exportCache = null; // force refresh so search/edit reflect the new data
+  } catch (e) {
+    logEl('edit-log', '<span class="log-err">✗ ' + escapeHtml(e.message) + '</span>');
+  }
+  btn.disabled = false; btn.innerHTML = '💾 Save Changes';
+}
+</script>
+</body>
+</html>
