@@ -50,6 +50,14 @@ const http = require('http');
 const { Server } = require('socket.io');
 const admin = require('firebase-admin');
 const { createClient } = require('@supabase/supabase-js');
+const cloudinary = require('cloudinary').v2;
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true,
+});
 
 // 1. Firebase Admin SDK Initialization — kept ONLY for ID token verification
 let serviceAccount;
@@ -106,7 +114,8 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors(CORS_OPTIONS));
 app.options('*', cors(CORS_OPTIONS));
-app.use(express.json());
+// Videos sent as base64 are much bigger than photos — default 100kb limit is too small.
+app.use(express.json({ limit: '30mb' }));
 
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
@@ -330,10 +339,23 @@ app.get('/api/following/:uid', authenticateUser, async (req, res) => {
 app.post('/api/gallery/add', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.user;
-    const { imageUrl, imageBase64 } = req.body || {};
-    const photoToSave = imageUrl || imageBase64;
+    const { imageBase64 } = req.body || {};
 
-    if (!photoToSave) return res.status(400).json({ success: false, message: 'Image data required.' });
+    if (!imageBase64) return res.status(400).json({ success: false, message: 'Image or video data required.' });
+    if (!/^data:(image|video)\//.test(imageBase64)) {
+      return res.status(400).json({ success: false, message: 'Valid base64 image or video data URL required.' });
+    }
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+      return res.status(500).json({ success: false, message: 'Cloudinary env vars not set (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET).' });
+    }
+
+    // Server-side safety cap (base64 runs ~1.37x the raw byte size) — keeps big video
+    // uploads from hammering Render's free-tier CPU/bandwidth or timing out.
+    const approxBytes = Math.floor(imageBase64.length * 0.75);
+    const MAX_BYTES = 20 * 1024 * 1024; // 20MB
+    if (approxBytes > MAX_BYTES) {
+      return res.status(400).json({ success: false, message: 'File too large (max ~20MB).' });
+    }
 
     const { data: userRow, error: fetchErr } = await supabase
       .from('users')
@@ -346,22 +368,38 @@ app.post('/api/gallery/add', authenticateUser, async (req, res) => {
 
     const currentPhotos = userRow.gallery_photos || [];
     if (currentPhotos.length >= 10) {
-      return res.status(400).json({ success: false, message: 'Limit reached: Maximum 10 photos allowed.' });
+      return res.status(400).json({ success: false, message: 'Limit reached: Maximum 10 items allowed.' });
     }
+
+    // Upload to Cloudinary — resource_type "auto" lets Cloudinary detect image vs video.
+    // Each gallery item gets its own public_id (unlike the profile photo, which overwrites
+    // the same id) so multiple gallery uploads never clobber each other.
+    let uploadResult;
+    try {
+      uploadResult = await cloudinary.uploader.upload(imageBase64, {
+        folder: `gallery/${uid}`,
+        resource_type: 'auto',
+      });
+    } catch (err) {
+      console.error('❌ Cloudinary gallery upload error:', err.message);
+      return res.status(502).json({ success: false, message: 'Cloudinary upload failed.' });
+    }
+
+    const mediaUrl = uploadResult.secure_url;
 
     // NOTE: read-then-write like this can theoretically race under near-simultaneous
     // uploads from the same user (unlike Firestore's atomic arrayUnion). For this app's
     // usage pattern (one user uploading from one device at a time) that's an acceptable
     // trade-off; swap for a Postgres function (e.g. array_append via .rpc()) if you ever
     // need hard atomicity guarantees.
-    const updatedPhotos = [...currentPhotos, photoToSave];
+    const updatedPhotos = [...currentPhotos, mediaUrl];
     const { error: updateErr } = await supabase
       .from('users')
       .update({ gallery_photos: updatedPhotos, updated_at: new Date().toISOString() })
       .eq('uid', uid);
 
     if (updateErr) throw updateErr;
-    return res.status(200).json({ success: true, message: 'Photo added to gallery!' });
+    return res.status(200).json({ success: true, message: 'Added to gallery!', url: mediaUrl });
   } catch (err) {
     console.error('❌ gallery add error:', err.message);
     return res.status(500).json({ success: false, message: 'Gallery error.' });
