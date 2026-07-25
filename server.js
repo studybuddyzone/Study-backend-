@@ -499,6 +499,9 @@ app.post('/api/unfollow', authenticateUser, async (req, res) => {
   }
 });
 
+// ==========================================
+// 👑 FOLLOWERS COUNT & LIST API (98.7K OVERRIDE ADDED HERE)
+// ==========================================
 app.get('/api/followers/:uid', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.params;
@@ -510,12 +513,23 @@ app.get('/api/followers/:uid', authenticateUser, async (req, res) => {
     if (error) throw error;
     const followerIds = (data || []).map((row) => row.follower_id);
 
-    return res.status(200).json({ success: true, count: followerIds.length, followers: followerIds });
+    // 🚀 यहाँ पर 98.7K की कंडीशन लगाई गई है (S small कर दिया गया है)
+    let displayCount = followerIds.length;
+    if (uid === 'studybuddyzonepro') {
+        displayCount = 98700;
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      count: displayCount, 
+      followers: followerIds // लिस्ट में सिर्फ असली फॉलोअर्स ही जाएंगे
+    });
   } catch (err) {
     console.error('❌ get followers error:', err.message);
     return res.status(500).json({ success: false, message: 'Get followers error.' });
   }
 });
+// ==========================================
 
 app.get('/api/following/:uid', authenticateUser, async (req, res) => {
   try {
