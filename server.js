@@ -30,6 +30,32 @@
  *   create index if not exists follows_follower_idx on follows (follower_id);
  *   create index if not exists follows_following_idx on follows (following_id);
  *
+ *   -- Private-account + follow-request + notification support (see migration.sql
+ *   -- for the full script, including the "is_private" column on users and the
+ *   -- public_users view used to keep photo_url/gallery_photos out of anon reads):
+ *   create table if not exists follow_requests (
+ *     id            bigserial primary key,
+ *     requester_id  text not null,
+ *     target_id     text not null,
+ *     status        text not null default 'pending', -- pending | accepted | rejected
+ *     created_at    timestamptz not null default now(),
+ *     updated_at    timestamptz not null default now(),
+ *     unique (requester_id, target_id)
+ *   );
+ *   create index if not exists follow_requests_target_idx on follow_requests (target_id, status);
+ *
+ *   create table if not exists notifications (
+ *     id            bigserial primary key,
+ *     user_id       text not null,   -- recipient
+ *     type          text not null,   -- 'follow_request' | 'follow_accepted'
+ *     from_uid      text not null,
+ *     from_name     text,
+ *     from_username text,
+ *     is_read       boolean not null default false,
+ *     created_at    timestamptz not null default now()
+ *   );
+ *   create index if not exists notifications_user_idx on notifications (user_id, created_at desc);
+ *
  *   create table if not exists messages (
  *     id           bigserial primary key,
  *     room_id      text not null,
@@ -171,6 +197,42 @@ function escapeIlikeTerm(raw) {
   return raw.replace(/[%,)*]/g, (ch) => '\\' + ch);
 }
 
+// ── Privacy / follow-request helpers ────────────────────────────────────────
+async function getUserPrivacyRow(uid) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('uid, name, username, photo_url, is_private')
+    .eq('uid', uid)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function checkIsFollowing(followerId, targetId) {
+  const { data, error } = await supabase
+    .from('follows')
+    .select('id')
+    .eq('follower_id', followerId)
+    .eq('following_id', targetId)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
+// Creates a notification row. Deliberately never includes a photo — notifications
+// only ever carry name/username so a request can't be used to leak a private photo.
+async function createNotification({ userId, type, fromUid, fromName, fromUsername }) {
+  const { error } = await supabase.from('notifications').insert({
+    user_id: userId,
+    type,
+    from_uid: fromUid,
+    from_name: fromName || 'Student',
+    from_username: fromUsername || '',
+    is_read: false,
+  });
+  if (error) console.error('❌ notification insert error:', error.message);
+}
+
 // 5. Basic Routes
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -182,7 +244,7 @@ app.get('/', (req, res) => {
 // User Sync API
 app.post('/api/users/sync', authenticateUser, async (req, res) => {
   try {
-    const { name, email, photoURL, username } = req.body || {};
+    const { name, email, photoURL, username, isPrivate } = req.body || {};
     const { uid } = req.user;
     const resolvedEmail = email || req.user.email || null;
 
@@ -193,6 +255,7 @@ app.post('/api/users/sync', authenticateUser, async (req, res) => {
     if (name !== undefined) payload.name = name;
     if (photoURL !== undefined) payload.photo_url = photoURL;
     if (username !== undefined) payload.username = username;
+    if (isPrivate !== undefined) payload.is_private = !!isPrivate;
 
     const { error } = await supabase
       .from('users')
@@ -219,9 +282,11 @@ app.get('/api/users/search', authenticateUser, async (req, res) => {
     const RESULT_LIMIT = 10;
     const term = `%${escapeIlikeTerm(rawQuery)}%`;
 
+    // NOTE: photo_url is deliberately NOT selected here — profile photos must never
+    // be visible from a public search result, only the name and S ID (username).
     const { data, error } = await supabase
       .from('users')
-      .select('uid, name, username, photo_url')
+      .select('uid, name, username, is_private')
       .or(`name.ilike.${term},username.ilike.${term}`)
       .limit(RESULT_LIMIT);
 
@@ -240,16 +305,38 @@ app.get('/api/users/search', authenticateUser, async (req, res) => {
 app.get('/api/users/:uid', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.params;
-    const { data, error } = await supabase
-      .from('users')
-      .select('uid, name, username, photo_url')
-      .eq('uid', uid)
-      .maybeSingle();
+    const requesterId = req.user.uid;
 
-    if (error) throw error;
+    const data = await getUserPrivacyRow(uid);
     if (!data) return res.status(404).json({ success: false, message: 'User not found.' });
 
-    return res.status(200).json({ success: true, user: data });
+    const isSelf = requesterId === uid;
+    const following = isSelf ? true : await checkIsFollowing(requesterId, uid);
+
+    // Private account, not yourself, and not an accepted follower yet →
+    // never send photo_url down the wire. Name + S ID only.
+    if (data.is_private && !isSelf && !following) {
+      let hasPendingRequest = false;
+      try {
+        const { data: reqRow } = await supabase
+          .from('follow_requests')
+          .select('id')
+          .eq('requester_id', requesterId)
+          .eq('target_id', uid)
+          .eq('status', 'pending')
+          .maybeSingle();
+        hasPendingRequest = !!reqRow;
+      } catch (e) { /* non-fatal */ }
+
+      return res.status(200).json({
+        success: true,
+        user: { uid: data.uid, name: data.name, username: data.username, is_private: true },
+        isFollowing: false,
+        hasPendingRequest,
+      });
+    }
+
+    return res.status(200).json({ success: true, user: data, isFollowing: following });
   } catch (err) {
     console.error('❌ get user error:', err.message);
     return res.status(500).json({ success: false, message: 'Get user error.' });
@@ -265,16 +352,129 @@ app.post('/api/follow', authenticateUser, async (req, res) => {
     if (!targetUserId) return res.status(400).json({ success: false, message: 'Target ID required.' });
     if (followerId === targetUserId) return res.status(400).json({ success: false, message: 'Cannot follow yourself.' });
 
+    const alreadyFollowing = await checkIsFollowing(followerId, targetUserId);
+    if (alreadyFollowing) {
+      return res.status(200).json({ success: true, followed: true, message: 'Already following.' });
+    }
+
+    const target = await getUserPrivacyRow(targetUserId);
+    if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    if (target.is_private) {
+      // Private account → send a pending request instead of following directly.
+      // upsert so re-requesting after a rejection just flips the row back to pending.
+      const { error: reqErr } = await supabase
+        .from('follow_requests')
+        .upsert(
+          { requester_id: followerId, target_id: targetUserId, status: 'pending', updated_at: new Date().toISOString() },
+          { onConflict: 'requester_id,target_id' }
+        );
+      if (reqErr) throw reqErr;
+
+      const requester = await getUserPrivacyRow(followerId);
+      await createNotification({
+        userId: targetUserId,
+        type: 'follow_request',
+        fromUid: followerId,
+        fromName: requester ? requester.name : 'Student',
+        fromUsername: requester ? requester.username : '',
+      });
+
+      return res.status(200).json({ success: true, requested: true, message: 'Follow request sent.' });
+    }
+
     // upsert on the (follower_id, following_id) unique constraint — safe to call twice (idempotent)
     const { error } = await supabase
       .from('follows')
       .upsert({ follower_id: followerId, following_id: targetUserId }, { onConflict: 'follower_id,following_id' });
 
     if (error) throw error;
-    return res.status(200).json({ success: true, message: 'Followed successfully!' });
+    return res.status(200).json({ success: true, followed: true, message: 'Followed successfully!' });
   } catch (err) {
     console.error('❌ follow error:', err.message);
     return res.status(500).json({ success: false, message: 'Follow error.' });
+  }
+});
+
+// Accept / reject an incoming follow request (only the target user can act on it)
+app.post('/api/follow-requests/:requesterUid/accept', authenticateUser, async (req, res) => {
+  try {
+    const me = req.user.uid;
+    const { requesterUid } = req.params;
+
+    const { data: reqRow, error: findErr } = await supabase
+      .from('follow_requests')
+      .select('id')
+      .eq('requester_id', requesterUid)
+      .eq('target_id', me)
+      .eq('status', 'pending')
+      .maybeSingle();
+    if (findErr) throw findErr;
+    if (!reqRow) return res.status(404).json({ success: false, message: 'No pending request found.' });
+
+    const { error: updErr } = await supabase
+      .from('follow_requests')
+      .update({ status: 'accepted', updated_at: new Date().toISOString() })
+      .eq('id', reqRow.id);
+    if (updErr) throw updErr;
+
+    const { error: followErr } = await supabase
+      .from('follows')
+      .upsert({ follower_id: requesterUid, following_id: me }, { onConflict: 'follower_id,following_id' });
+    if (followErr) throw followErr;
+
+    const approver = await getUserPrivacyRow(me);
+    await createNotification({
+      userId: requesterUid,
+      type: 'follow_accepted',
+      fromUid: me,
+      fromName: approver ? approver.name : 'Student',
+      fromUsername: approver ? approver.username : '',
+    });
+
+    return res.status(200).json({ success: true, message: 'Request accepted.' });
+  } catch (err) {
+    console.error('❌ accept follow request error:', err.message);
+    return res.status(500).json({ success: false, message: 'Accept request error.' });
+  }
+});
+
+app.post('/api/follow-requests/:requesterUid/reject', authenticateUser, async (req, res) => {
+  try {
+    const me = req.user.uid;
+    const { requesterUid } = req.params;
+
+    const { error } = await supabase
+      .from('follow_requests')
+      .delete()
+      .eq('requester_id', requesterUid)
+      .eq('target_id', me);
+    if (error) throw error;
+
+    return res.status(200).json({ success: true, message: 'Request rejected.' });
+  } catch (err) {
+    console.error('❌ reject follow request error:', err.message);
+    return res.status(500).json({ success: false, message: 'Reject request error.' });
+  }
+});
+
+// Lets the REQUESTER withdraw their own pending request (mirrors reject, but keyed by target uid + caller-as-requester)
+app.post('/api/follow-requests/:targetUid/cancel', authenticateUser, async (req, res) => {
+  try {
+    const me = req.user.uid;
+    const { targetUid } = req.params;
+
+    const { error } = await supabase
+      .from('follow_requests')
+      .delete()
+      .eq('requester_id', me)
+      .eq('target_id', targetUid);
+    if (error) throw error;
+
+    return res.status(200).json({ success: true, message: 'Request cancelled.' });
+  } catch (err) {
+    console.error('❌ cancel follow request error:', err.message);
+    return res.status(500).json({ success: false, message: 'Cancel request error.' });
   }
 });
 
@@ -332,6 +532,67 @@ app.get('/api/following/:uid', authenticateUser, async (req, res) => {
   } catch (err) {
     console.error('❌ get following error:', err.message);
     return res.status(500).json({ success: false, message: 'Get following error.' });
+  }
+});
+
+// Notifications API — powers both the main app's bell icon and Social Mode's own
+// notification list. Never includes a photo field by design (see createNotification).
+app.get('/api/notifications', authenticateUser, async (req, res) => {
+  try {
+    const me = req.user.uid;
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id, type, from_uid, from_name, from_username, is_read, created_at')
+      .eq('user_id', me)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+
+    const notifications = data || [];
+
+    // For follow_request notifications, attach the *current* request status so the
+    // UI can grey out Accept/Reject once it's already been actioned.
+    const requesterIds = notifications.filter((n) => n.type === 'follow_request').map((n) => n.from_uid);
+    let statusByRequester = {};
+    if (requesterIds.length > 0) {
+      const { data: reqRows, error: reqErr } = await supabase
+        .from('follow_requests')
+        .select('requester_id, status')
+        .eq('target_id', me)
+        .in('requester_id', requesterIds);
+      if (!reqErr && reqRows) {
+        statusByRequester = reqRows.reduce((acc, r) => { acc[r.requester_id] = r.status; return acc; }, {});
+      }
+    }
+
+    const enriched = notifications.map((n) => (
+      n.type === 'follow_request'
+        ? Object.assign({}, n, { requestStatus: statusByRequester[n.from_uid] || 'pending' })
+        : n
+    ));
+
+    const unreadCount = enriched.filter((n) => !n.is_read).length;
+    return res.status(200).json({ success: true, notifications: enriched, unreadCount });
+  } catch (err) {
+    console.error('❌ get notifications error:', err.message);
+    return res.status(500).json({ success: false, message: 'Get notifications error.' });
+  }
+});
+
+app.post('/api/notifications/mark-read', authenticateUser, async (req, res) => {
+  try {
+    const me = req.user.uid;
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', me)
+      .eq('is_read', false);
+    if (error) throw error;
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('❌ mark notifications read error:', err.message);
+    return res.status(500).json({ success: false, message: 'Mark read error.' });
   }
 });
 
@@ -410,6 +671,19 @@ app.post('/api/gallery/add', authenticateUser, async (req, res) => {
 app.get('/api/gallery/:uid', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.params;
+    const requesterId = req.user.uid;
+
+    if (requesterId !== uid) {
+      const privacyRow = await getUserPrivacyRow(uid);
+      if (!privacyRow) return res.status(404).json({ success: false, message: 'User not found.' });
+      if (privacyRow.is_private) {
+        const following = await checkIsFollowing(requesterId, uid);
+        if (!following) {
+          return res.status(403).json({ success: false, locked: true, message: 'This account is private.' });
+        }
+      }
+    }
+
     const { data, error } = await supabase
       .from('users')
       .select('gallery_photos')
