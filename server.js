@@ -1,5 +1,45 @@
 /**
- * StudyBuddyZone Backend - Final Updated Engine (Firestore + Search + Follow + Gallery + Socket.io Chat)
+ * StudyBuddyZone Backend — Supabase (PostgreSQL) + Search + Follow + Gallery + Socket.io Chat
+ * Firebase is used ONLY for verifying client ID tokens (admin.auth().verifyIdToken()).
+ * All data (users, follows, messages) now lives in Supabase/Postgres.
+ *
+ * ---------------------------------------------------------------------------
+ * REQUIRED SUPABASE SCHEMA (run once in the Supabase SQL editor before deploying):
+ *
+ *   create table if not exists users (
+ *     uid            text primary key,
+ *     name           text,
+ *     username       text,
+ *     email          text,
+ *     photo_url      text,
+ *     gallery_photos text[] not null default '{}',
+ *     created_at     timestamptz not null default now(),
+ *     updated_at     timestamptz not null default now()
+ *   );
+ *   create index if not exists users_name_idx on users using gin (name gin_trgm_ops);
+ *   create index if not exists users_username_idx on users using gin (username gin_trgm_ops);
+ *   -- (the two indexes above need: create extension if not exists pg_trgm;)
+ *
+ *   create table if not exists follows (
+ *     id            bigserial primary key,
+ *     follower_id   text not null,
+ *     following_id  text not null,
+ *     created_at    timestamptz not null default now(),
+ *     unique (follower_id, following_id)
+ *   );
+ *   create index if not exists follows_follower_idx on follows (follower_id);
+ *   create index if not exists follows_following_idx on follows (following_id);
+ *
+ *   create table if not exists messages (
+ *     id           bigserial primary key,
+ *     room_id      text not null,
+ *     sender_id    text not null,
+ *     receiver_id  text not null,
+ *     text         text not null,
+ *     timestamp    timestamptz not null default now()
+ *   );
+ *   create index if not exists messages_room_ts_idx on messages (room_id, timestamp);
+ * ---------------------------------------------------------------------------
  */
 
 require('dotenv').config();
@@ -9,49 +49,63 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const admin = require('firebase-admin');
+const { createClient } = require('@supabase/supabase-js');
 
-// 1. Firebase Admin SDK Initialization (Render Environment + Local File Handling)
+// 1. Firebase Admin SDK Initialization — kept ONLY for ID token verification
 let serviceAccount;
 
 try {
   if (process.env.serviceAccountKey) {
-    // Render या Production Environment के लिए Environment Variable से लोड करें
+    // Render / Production environment ke liye env var se load karo
     serviceAccount = JSON.parse(process.env.serviceAccountKey);
   } else {
-    // Local Testing के लिए फ़ाइल से लोड करें
+    // Local testing ke liye file se load karo
     serviceAccount = require('./serviceAccountKey.json');
   }
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
-  console.log('✅ Firebase Admin SDK initialized successfully.');
+  console.log('✅ Firebase Admin SDK initialized successfully (token verification only).');
 } catch (err) {
   console.error('❌ Firebase Admin SDK initialization failed:', err.message);
   process.exit(1);
 }
 
-const db = admin.firestore();
-const usersCollection = db.collection('users');
-const followsCollection = db.collection('follows');
-const messagesCollection = db.collection('messages');
+// 1b. Supabase Client Initialization
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('❌ SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in the environment.');
+  process.exit(1);
+}
 
-// 2. Express & HTTP Server Setup (CORS and Transports Fixed)
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false }, // server-side service-role client, no session needed
+});
+console.log('✅ Supabase client initialized.');
+
+// 2. Express & HTTP Server Setup
 const app = express();
 const server = http.createServer(app);
+
+const CORS_OPTIONS = {
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type'],
+};
+
 const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST'],
-    credentials: true
   },
   allowEIO3: true,
-  transports: ['websocket', 'polling']
+  transports: ['polling', 'websocket'],
 });
 
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: '*', credentials: true }));
+app.use(cors(CORS_OPTIONS));
+app.options('*', cors(CORS_OPTIONS));
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -59,7 +113,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 3. Authentication Middleware
+// 3. Authentication Middleware — unchanged: still Firebase ID token verification
 async function authenticateUser(req, res, next) {
   const authHeader = req.headers.authorization;
 
@@ -85,7 +139,7 @@ async function authenticateUser(req, res, next) {
   }
 }
 
-// 4. In-Memory Search Cache
+// 4. In-Memory Search Cache (unchanged)
 const SEARCH_CACHE_TTL_MS = 60 * 1000;
 const searchCache = new Map();
 
@@ -103,11 +157,16 @@ function setCachedSearch(key, data) {
   searchCache.set(key, { data, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
 }
 
+// Escapes PostgREST filter special characters (%, ,, ), *) inside a user-supplied search term
+function escapeIlikeTerm(raw) {
+  return raw.replace(/[%,)*]/g, (ch) => '\\' + ch);
+}
+
 // 5. Basic Routes
 app.get('/', (req, res) => {
   res.status(200).json({
     success: true,
-    message: 'StudyBuddyZone backend is up and running 🚀',
+    message: 'StudyBuddyZone backend (Supabase) is up and running 🚀',
   });
 });
 
@@ -116,44 +175,29 @@ app.post('/api/users/sync', authenticateUser, async (req, res) => {
   try {
     const { name, email, photoURL, username } = req.body || {};
     const { uid } = req.user;
-
-    const userRef = usersCollection.doc(uid);
-    const userSnap = await userRef.get();
-
     const resolvedEmail = email || req.user.email || null;
 
-    if (userSnap.exists) {
-      const updates = {
-        name: name || userSnap.data().name || null,
-        photo_url: photoURL || userSnap.data().photo_url || null,
-        email: resolvedEmail,
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
-      };
-      if (username) updates.username = username;
-      
-      await userRef.set(updates, { merge: true });
-      return res.status(200).json({ success: true, message: 'User updated successfully.' });
-    }
+    // Only include fields that were actually provided — Supabase upsert's UPDATE branch
+    // only touches columns present in the payload, so omitted fields keep their existing
+    // value on an existing row (same "merge" behaviour as the old Firestore version).
+    const payload = { uid, email: resolvedEmail, updated_at: new Date().toISOString() };
+    if (name !== undefined) payload.name = name;
+    if (photoURL !== undefined) payload.photo_url = photoURL;
+    if (username !== undefined) payload.username = username;
 
-    const newUser = {
-      uid,
-      name: name || null,
-      email: resolvedEmail,
-      username: username || null,
-      photo_url: photoURL || null,
-      gallery_photos: [],
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
-    };
+    const { error } = await supabase
+      .from('users')
+      .upsert(payload, { onConflict: 'uid' });
 
-    await userRef.set(newUser);
-    return res.status(201).json({ success: true, message: 'User created successfully.' });
+    if (error) throw error;
+    return res.status(200).json({ success: true, message: 'User synced successfully.' });
   } catch (err) {
+    console.error('❌ sync error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to sync user.' });
   }
 });
 
-// Search API
+// Search API — case-insensitive match on name OR username
 app.get('/api/users/search', authenticateUser, async (req, res) => {
   try {
     const rawQuery = (req.query.q || '').trim();
@@ -164,31 +208,20 @@ app.get('/api/users/search', authenticateUser, async (req, res) => {
     if (cached) return res.status(200).json({ success: true, cached: true, users: cached });
 
     const RESULT_LIMIT = 10;
-    const endBound = rawQuery + '\uf8ff';
+    const term = `%${escapeIlikeTerm(rawQuery)}%`;
 
-    const [usernameSnap, nameSnap] = await Promise.all([
-      usersCollection.where('username', '>=', rawQuery).where('username', '<=', endBound).limit(RESULT_LIMIT).get(),
-      usersCollection.where('name', '>=', rawQuery).where('name', '<=', endBound).limit(RESULT_LIMIT).get(),
-    ]);
+    const { data, error } = await supabase
+      .from('users')
+      .select('uid, name, username, photo_url')
+      .or(`name.ilike.${term},username.ilike.${term}`)
+      .limit(RESULT_LIMIT);
 
-    const resultsByUid = new Map();
-    for (const doc of [...usernameSnap.docs, ...nameSnap.docs]) {
-      if (!resultsByUid.has(doc.id)) {
-        const data = doc.data();
-        resultsByUid.set(doc.id, {
-          uid: doc.id,
-          name: data.name || null,
-          username: data.username || null,
-          photo_url: data.photo_url || null,
-        });
-      }
-    }
+    if (error) throw error;
 
-    const users = Array.from(resultsByUid.values()).slice(0, RESULT_LIMIT);
-    setCachedSearch(cacheKey, users);
-
-    return res.status(200).json({ success: true, cached: false, users });
+    setCachedSearch(cacheKey, data);
+    return res.status(200).json({ success: true, cached: false, users: data });
   } catch (err) {
+    console.error('❌ search error:', err.message);
     return res.status(500).json({ success: false, message: 'Search failed.' });
   }
 });
@@ -198,22 +231,19 @@ app.get('/api/users/search', authenticateUser, async (req, res) => {
 app.get('/api/users/:uid', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.params;
-    const userSnap = await usersCollection.doc(uid).get();
+    const { data, error } = await supabase
+      .from('users')
+      .select('uid, name, username, photo_url')
+      .eq('uid', uid)
+      .maybeSingle();
 
-    if (!userSnap.exists) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (error) throw error;
+    if (!data) return res.status(404).json({ success: false, message: 'User not found.' });
 
-    const data = userSnap.data();
-    res.status(200).json({
-      success: true,
-      user: {
-        uid,
-        name: data.name || null,
-        username: data.username || null,
-        photo_url: data.photo_url || null,
-      }
-    });
+    return res.status(200).json({ success: true, user: data });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Get user error.' });
+    console.error('❌ get user error:', err.message);
+    return res.status(500).json({ success: false, message: 'Get user error.' });
   }
 });
 
@@ -221,61 +251,78 @@ app.get('/api/users/:uid', authenticateUser, async (req, res) => {
 app.post('/api/follow', authenticateUser, async (req, res) => {
   try {
     const followerId = req.user.uid;
-    const { targetUserId } = req.body;
+    const { targetUserId } = req.body || {};
 
     if (!targetUserId) return res.status(400).json({ success: false, message: 'Target ID required.' });
     if (followerId === targetUserId) return res.status(400).json({ success: false, message: 'Cannot follow yourself.' });
 
-    const followDocId = `${followerId}_${targetUserId}`;
-    await followsCollection.doc(followDocId).set({
-      follower_id: followerId,
-      following_id: targetUserId,
-      created_at: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    // upsert on the (follower_id, following_id) unique constraint — safe to call twice (idempotent)
+    const { error } = await supabase
+      .from('follows')
+      .upsert({ follower_id: followerId, following_id: targetUserId }, { onConflict: 'follower_id,following_id' });
 
-    res.status(200).json({ success: true, message: 'Followed successfully!' });
+    if (error) throw error;
+    return res.status(200).json({ success: true, message: 'Followed successfully!' });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Follow error.' });
+    console.error('❌ follow error:', err.message);
+    return res.status(500).json({ success: false, message: 'Follow error.' });
   }
 });
 
 app.post('/api/unfollow', authenticateUser, async (req, res) => {
   try {
     const followerId = req.user.uid;
-    const { targetUserId } = req.body;
+    const { targetUserId } = req.body || {};
 
     if (!targetUserId) return res.status(400).json({ success: false, message: 'Target ID required.' });
 
-    const followDocId = `${followerId}_${targetUserId}`;
-    await followsCollection.doc(followDocId).delete();
+    const { error } = await supabase
+      .from('follows')
+      .delete()
+      .eq('follower_id', followerId)
+      .eq('following_id', targetUserId);
 
-    res.status(200).json({ success: true, message: 'Unfollowed successfully!' });
+    if (error) throw error;
+    return res.status(200).json({ success: true, message: 'Unfollowed successfully!' });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Unfollow error.' });
+    console.error('❌ unfollow error:', err.message);
+    return res.status(500).json({ success: false, message: 'Unfollow error.' });
   }
 });
 
 app.get('/api/followers/:uid', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.params;
-    const snap = await followsCollection.where('following_id', '==', uid).get();
-    const followerIds = snap.docs.map(doc => doc.data().follower_id);
+    const { data, error } = await supabase
+      .from('follows')
+      .select('follower_id')
+      .eq('following_id', uid);
 
-    res.status(200).json({ success: true, count: followerIds.length, followers: followerIds });
+    if (error) throw error;
+    const followerIds = (data || []).map((row) => row.follower_id);
+
+    return res.status(200).json({ success: true, count: followerIds.length, followers: followerIds });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Get followers error.' });
+    console.error('❌ get followers error:', err.message);
+    return res.status(500).json({ success: false, message: 'Get followers error.' });
   }
 });
 
 app.get('/api/following/:uid', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.params;
-    const snap = await followsCollection.where('follower_id', '==', uid).get();
-    const followingIds = snap.docs.map(doc => doc.data().following_id);
+    const { data, error } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', uid);
 
-    res.status(200).json({ success: true, count: followingIds.length, following: followingIds });
+    if (error) throw error;
+    const followingIds = (data || []).map((row) => row.following_id);
+
+    return res.status(200).json({ success: true, count: followingIds.length, following: followingIds });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Get following error.' });
+    console.error('❌ get following error:', err.message);
+    return res.status(500).json({ success: false, message: 'Get following error.' });
   }
 });
 
@@ -283,29 +330,41 @@ app.get('/api/following/:uid', authenticateUser, async (req, res) => {
 app.post('/api/gallery/add', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.user;
-    const { imageUrl, imageBase64 } = req.body;
+    const { imageUrl, imageBase64 } = req.body || {};
     const photoToSave = imageUrl || imageBase64;
 
     if (!photoToSave) return res.status(400).json({ success: false, message: 'Image data required.' });
 
-    const userRef = usersCollection.doc(uid);
-    const userSnap = await userRef.get();
+    const { data: userRow, error: fetchErr } = await supabase
+      .from('users')
+      .select('gallery_photos')
+      .eq('uid', uid)
+      .maybeSingle();
 
-    if (!userSnap.exists) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (fetchErr) throw fetchErr;
+    if (!userRow) return res.status(404).json({ success: false, message: 'User not found.' });
 
-    const currentPhotos = userSnap.data().gallery_photos || [];
-
+    const currentPhotos = userRow.gallery_photos || [];
     if (currentPhotos.length >= 10) {
       return res.status(400).json({ success: false, message: 'Limit reached: Maximum 10 photos allowed.' });
     }
 
-    await userRef.update({
-      gallery_photos: admin.firestore.FieldValue.arrayUnion(photoToSave)
-    });
+    // NOTE: read-then-write like this can theoretically race under near-simultaneous
+    // uploads from the same user (unlike Firestore's atomic arrayUnion). For this app's
+    // usage pattern (one user uploading from one device at a time) that's an acceptable
+    // trade-off; swap for a Postgres function (e.g. array_append via .rpc()) if you ever
+    // need hard atomicity guarantees.
+    const updatedPhotos = [...currentPhotos, photoToSave];
+    const { error: updateErr } = await supabase
+      .from('users')
+      .update({ gallery_photos: updatedPhotos, updated_at: new Date().toISOString() })
+      .eq('uid', uid);
 
-    res.status(200).json({ success: true, message: 'Photo added to gallery!' });
+    if (updateErr) throw updateErr;
+    return res.status(200).json({ success: true, message: 'Photo added to gallery!' });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Gallery error.' });
+    console.error('❌ gallery add error:', err.message);
+    return res.status(500).json({ success: false, message: 'Gallery error.' });
   }
 });
 
@@ -313,18 +372,24 @@ app.post('/api/gallery/add', authenticateUser, async (req, res) => {
 app.get('/api/gallery/:uid', authenticateUser, async (req, res) => {
   try {
     const { uid } = req.params;
-    const userSnap = await usersCollection.doc(uid).get();
+    const { data, error } = await supabase
+      .from('users')
+      .select('gallery_photos')
+      .eq('uid', uid)
+      .maybeSingle();
 
-    if (!userSnap.exists) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (error) throw error;
+    if (!data) return res.status(404).json({ success: false, message: 'User not found.' });
 
-    const photos = userSnap.data().gallery_photos || [];
-    res.status(200).json({ success: true, count: photos.length, photos });
+    const photos = data.gallery_photos || [];
+    return res.status(200).json({ success: true, count: photos.length, photos });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Get gallery error.' });
+    console.error('❌ get gallery error:', err.message);
+    return res.status(500).json({ success: false, message: 'Get gallery error.' });
   }
 });
 
-// Chat Messages History API (पुरानी चैट लोड करने के लिए)
+// Chat Messages History API (purani chat load karne ke liye)
 app.get('/api/messages/:otherUserId', authenticateUser, async (req, res) => {
   try {
     const currentUserId = req.user.uid;
@@ -332,17 +397,19 @@ app.get('/api/messages/:otherUserId', authenticateUser, async (req, res) => {
 
     const chatRoomId = [currentUserId, otherUserId].sort().join('_');
 
-    const snap = await messagesCollection
-      .where('room_id', '==', chatRoomId)
-      .orderBy('timestamp', 'asc')
-      .limit(50)
-      .get();
+    const { data, error } = await supabase
+      .from('messages')
+      .select('room_id, sender_id, receiver_id, text, timestamp')
+      .eq('room_id', chatRoomId)
+      .order('timestamp', { ascending: true })
+      .limit(50);
 
-    const messages = snap.docs.map(doc => doc.data());
+    if (error) throw error;
 
-    res.status(200).json({ success: true, count: messages.length, messages });
+    return res.status(200).json({ success: true, count: data.length, messages: data });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Chat history error.' });
+    console.error('❌ chat history error:', err.message);
+    return res.status(500).json({ success: false, message: 'Chat history error.' });
   }
 });
 
@@ -366,27 +433,30 @@ io.on('connection', (socket) => {
   socket.join(socket.user.uid);
 
   socket.on('send_message', async (data) => {
-    const { receiverId, text } = data;
+    const { receiverId, text } = data || {};
     const senderId = socket.user.uid;
 
     if (!receiverId || !text) return;
 
     const chatRoomId = [senderId, receiverId].sort().join('_');
+    const nowIso = new Date().toISOString();
 
     const messageData = {
       room_id: chatRoomId,
       sender_id: senderId,
       receiver_id: receiverId,
       text: text,
-      timestamp: new Date().toISOString()
+      timestamp: nowIso,
     };
 
+    // Emit immediately for real-time responsiveness, then persist to Supabase
     io.to(receiverId).emit('receive_message', messageData);
 
     try {
-      await messagesCollection.add(messageData);
+      const { error } = await supabase.from('messages').insert(messageData);
+      if (error) console.error('❌ Error saving chat message:', error.message);
     } catch (err) {
-      console.error('Error saving chat message:', err);
+      console.error('❌ Error saving chat message:', err.message);
     }
   });
 
@@ -397,6 +467,5 @@ io.on('connection', (socket) => {
 
 // 9. Start Server
 server.listen(PORT, () => {
-  console.log(`✅ Server running with Socket.io Chat Engine on port ${PORT}`);
+  console.log(`✅ Server running with Socket.io Chat Engine (Supabase) on port ${PORT}`);
 });
-                                         
