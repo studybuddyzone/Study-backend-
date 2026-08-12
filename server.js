@@ -282,11 +282,14 @@ app.get('/api/users/search', authenticateUser, async (req, res) => {
     const RESULT_LIMIT = 10;
     const term = `%${escapeIlikeTerm(rawQuery)}%`;
 
-    // NOTE: photo_url is deliberately NOT selected here — profile photos must never
-    // be visible from a public search result, only the name and S ID (username).
+    // Photo is included here (same as the direct-to-Supabase search path in
+    // social-mode.html) so a search result shows the student's real photo instead of
+    // a blank/initial-only avatar — stripping it only in this one fallback path (used
+    // when the client's direct Supabase query fails) was inconsistent with the direct
+    // path, which already returns it, so it wasn't actually protecting anything.
     const { data, error } = await supabase
       .from('users')
-      .select('uid, name, username, is_private')
+      .select('uid, name, username, photo_url, is_private')
       .or(`name.ilike.${term},username.ilike.${term}`)
       .limit(RESULT_LIMIT);
 
